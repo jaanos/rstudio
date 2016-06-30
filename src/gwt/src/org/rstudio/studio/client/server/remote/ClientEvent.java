@@ -142,6 +142,16 @@ class ClientEvent extends JavaScriptObject
    public static final String EditorCommand = "editor_command";
    public static final String PreviewRmd = "preview_rmd";
    public static final String WebsiteFileSaved = "website_file_saved";
+   public static final String ChunkPlotRefreshed = "chunk_plot_refreshed";
+   public static final String ChunkPlotRefreshFinished = "chunk_plot_refresh_finished";
+   public static final String ReloadWithLastChanceSave = "reload_with_last_chance_save";
+   public static final String ConnectionUpdated = "connection_updated";
+   public static final String EnableConnections = "enable_connections";
+   public static final String ConnectionListChanged = "connection_list_changed";
+   public static final String ActiveConnectionsChanged = "active_connections_changed";
+   public static final String ConnectionOpened = "connection_opened";
+   public static final String NotebookRangeExecuted = "notebook_range_executed";
+   public static final String ChunkExecStateChanged = "chunk_exec_state_changed";
 
    protected ClientEvent()
    {

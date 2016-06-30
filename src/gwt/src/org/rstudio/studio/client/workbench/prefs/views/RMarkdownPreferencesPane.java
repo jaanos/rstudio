@@ -15,9 +15,11 @@
 package org.rstudio.studio.client.workbench.prefs.views;
 
 import com.google.gwt.resources.client.ImageResource;
+import com.google.gwt.user.client.ui.CheckBox;
 import com.google.inject.Inject;
 
 import org.rstudio.core.client.widget.SelectWidget;
+import org.rstudio.studio.client.common.HelpLink;
 import org.rstudio.studio.client.rmarkdown.RmdOutput;
 import org.rstudio.studio.client.workbench.prefs.model.RPrefs;
 import org.rstudio.studio.client.workbench.prefs.model.UIPrefs;
@@ -71,11 +73,29 @@ public class RMarkdownPreferencesPane extends PreferencesPane
             false);
       add(rmdViewerMode_);
 
-      if (prefs_.showRmdChunkOutputInline().getValue())
-      {
-         add(checkboxPref("Execute setup chunk automatically in notebooks", 
-                          prefs_.autoRunSetupChunk()));
-      }
+       
+      // show output inline for all Rmds
+      final CheckBox rmdInlineOutput = checkboxPref(
+            "Show output inline for all R Markdown documents",
+            prefs_.showRmdChunkOutputInline());
+      add(rmdInlineOutput);
+      
+      add(spacedBefore(headerLabel("R Notebooks")));
+
+      // auto-execute the setup chunk
+      final CheckBox autoExecuteSetupChunk = checkboxPref(
+            "Execute setup chunk automatically in notebooks", 
+            prefs_.autoRunSetupChunk());
+      add(autoExecuteSetupChunk);
+      
+      // hide console when executing notebook chunks
+      final CheckBox notebookHideConsole = checkboxPref(
+            "Hide console automatically when executing " +
+            "notebook chunks",
+            prefs_.hideConsoleOnChunkExecute());
+      add(notebookHideConsole);
+      
+      add(spacedBefore(new HelpLink("Using R Notebooks", "using_notebooks")));
    }
 
    @Override
@@ -100,7 +120,7 @@ public class RMarkdownPreferencesPane extends PreferencesPane
    protected void initialize(RPrefs prefs)
    {
       docOutlineDisplay_.setValue(prefs_.shownSectionsInDocumentOutline().getValue().toString());
-      rmdViewerMode_.setValue(prefs_.rmdViewerType().getValue().toString());      
+      rmdViewerMode_.setValue(prefs_.rmdViewerType().getValue().toString());
    }
    
    @Override
@@ -113,7 +133,7 @@ public class RMarkdownPreferencesPane extends PreferencesPane
       
       prefs_.rmdViewerType().setGlobalValue(Integer.decode(
             rmdViewerMode_.getValue()));
-      
+                 
       return requiresRestart;
    }
 

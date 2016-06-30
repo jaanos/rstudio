@@ -31,9 +31,6 @@ endif()
 if(NOT EXISTS "${RSTUDIO_DEPENDENCIES_DIR}/common/rmarkdown")
   message(FATAL_ERROR "rmarkdown package not found (re-run install-dependencies script to install)")
 endif()
-if(NOT EXISTS "${RSTUDIO_DEPENDENCIES_DIR}/common/profvis")
-  message(FATAL_ERROR "profvis package not found (re-run install-dependencies script to install)")
-endif()
 
 # verify libclang is installed
 if(WIN32)
@@ -135,6 +132,10 @@ set (SESSION_SOURCE_FILES
    modules/clang/RCompilationDatabase.cpp
    modules/clang/RSourceIndex.cpp
    modules/clang/SessionClang.cpp
+   modules/connections/ActiveConnections.cpp
+   modules/connections/Connection.cpp
+   modules/connections/ConnectionHistory.cpp
+   modules/connections/SessionConnections.cpp
    modules/data/SessionData.cpp
    modules/data/DataViewer.cpp
    modules/environment/EnvironmentMonitor.cpp
@@ -154,15 +155,22 @@ set (SESSION_SOURCE_FILES
    modules/presentation/TutorialInstaller.cpp
    modules/rmarkdown/SessionRMarkdown.cpp
    modules/rmarkdown/SessionRmdNotebook.cpp
-   modules/rmarkdown/SessionRnbParser.cpp
+   modules/rmarkdown/SessionExecuteChunkOperation.cpp
+   modules/rmarkdown/NotebookAlternateEngines.cpp
    modules/rmarkdown/NotebookCache.cpp
+   modules/rmarkdown/NotebookCapture.cpp
    modules/rmarkdown/NotebookChunkDefs.cpp
+   modules/rmarkdown/NotebookDocQueue.cpp
    modules/rmarkdown/NotebookErrors.cpp
    modules/rmarkdown/NotebookExec.cpp
    modules/rmarkdown/NotebookHtmlWidgets.cpp
    modules/rmarkdown/NotebookOutput.cpp
    modules/rmarkdown/NotebookPaths.cpp
+   modules/rmarkdown/NotebookPlotReplay.cpp
    modules/rmarkdown/NotebookPlots.cpp
+   modules/rmarkdown/NotebookQueue.cpp
+   modules/rmarkdown/NotebookQueueUnit.cpp
+   modules/rmarkdown/NotebookWorkingDir.cpp
    modules/rmarkdown/RMarkdownPresentation.cpp
    modules/shiny/SessionShiny.cpp
    modules/tex/SessionCompilePdf.cpp
@@ -428,11 +436,6 @@ if (NOT RSTUDIO_SESSION_WIN64)
    install(FILES ${RMARKDOWN_PACKAGE}
            DESTINATION ${RSTUDIO_INSTALL_SUPPORTING}/R/packages)
 
-   # install profvis package
-   file(GLOB PROFVIS_PACKAGE "${RSTUDIO_DEPENDENCIES_DIR}/common/profvis*.tar.gz")
-   install(FILES ${PROFVIS_PACKAGE}
-           DESTINATION ${RSTUDIO_INSTALL_SUPPORTING}/R/packages)
-
    # install PDF.js
    install(DIRECTORY "resources/pdfjs"
            DESTINATION ${RSTUDIO_INSTALL_SUPPORTING}/resources)
@@ -494,6 +497,12 @@ if (NOT RSTUDIO_SESSION_WIN64)
               DESTINATION  "${RSTUDIO_INSTALL_BIN}/sumatra")
       install(FILES resources/sumatrapdfrestrict.ini
                DESTINATION  "${RSTUDIO_INSTALL_BIN}/sumatra")
+
+      install(PROGRAMS "${RSTUDIO_WINDOWS_DEPENDENCIES_DIR}/winutils/1.0/winutils.exe"
+              DESTINATION ${RSTUDIO_INSTALL_BIN}/winutils)
+      install(PROGRAMS "${RSTUDIO_WINDOWS_DEPENDENCIES_DIR}/winutils/1.0/x64/winutils.exe"
+              DESTINATION ${RSTUDIO_INSTALL_BIN}/winutils/x64)
+
    endif()
 endif()
 

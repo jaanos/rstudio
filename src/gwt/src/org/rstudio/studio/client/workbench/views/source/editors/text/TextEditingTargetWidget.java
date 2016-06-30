@@ -252,7 +252,7 @@ public class TextEditingTargetWidget
       String cmdText = 
         new KeyboardShortcut(mod + KeyboardShortcut.SHIFT, 'K').toString(true);
       cmdText = DomUtils.htmlToText(cmdText);
-      notebookToolbarButton_.setTitle("Compile Notebook (" + cmdText + ")");
+      notebookToolbarButton_.setTitle("Compile Report (" + cmdText + ")");
       
       texSeparatorWidget_ = toolbar.addLeftSeparator();
       toolbar.addLeftWidget(texToolbarButton_ = createLatexFormatButton());
@@ -341,6 +341,14 @@ public class TextEditingTargetWidget
       chunksMenu.addSeparator();
       chunksMenu.addItem(commands_.executePreviousChunks().createMenuItem(false));
       chunksMenu.addItem(commands_.executeSubsequentChunks().createMenuItem(false));
+      if (uiPrefs_.showRmdChunkOutputInline().getValue())
+      {
+         chunksMenu.addSeparator();
+         chunksMenu.addItem(
+               commands_.restartRRunAllChunks().createMenuItem(false));
+         chunksMenu.addItem(
+               commands_.restartRClearOutput().createMenuItem(false));
+      }
       chunksMenu.addSeparator();
       chunksMenu.addItem(commands_.executeAllCode().createMenuItem(false));
       chunksButton_ = new ToolbarButton(
@@ -813,9 +821,10 @@ public class TextEditingTargetWidget
                      new RmdOutputFormatChangedEvent(valueName));
             }
          };
-         MenuItem item = ImageMenuItem.create(img, 
-                                              prefix + options.get(i), 
-                                              cmd, 2);
+         String text = ext == ".nb.html" ? "Preview Notebook" :
+            prefix + options.get(i);
+            
+         MenuItem item = ImageMenuItem.create(img, text, cmd, 2);
          rmdFormatButton_.addMenuItem(item, values.get(i));
       }
       
@@ -880,8 +889,8 @@ public class TextEditingTargetWidget
       knitDocumentButton_.setText(knitCommandText_);
       knitDocumentButton_.setLeftImage(
             commands_.newRNotebook().getImageResource());
-      setRmdFormatButtonVisible(false);
-      showRmdViewerMenuItems(true, false, true, RmdOutput.TYPE_NOTEBOOK);
+      setRmdFormatButtonVisible(true);
+      showRmdViewerMenuItems(true, true, true, RmdOutput.TYPE_NOTEBOOK);
    }
    
    private void setRmdFormatButtonVisible(boolean visible)
@@ -1063,7 +1072,8 @@ public class TextEditingTargetWidget
          menu.addSeparator();
       }
       
-      if (uiPrefs_.showRmdChunkOutputInline().getValue())
+      if (uiPrefs_.showRmdChunkOutputInline().getValue() &&
+          type != RmdOutput.TYPE_SHINY)
       {
          if (type != RmdOutput.TYPE_NOTEBOOK)
          {

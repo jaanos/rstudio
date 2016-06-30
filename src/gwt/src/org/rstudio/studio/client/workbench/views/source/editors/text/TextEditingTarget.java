@@ -92,11 +92,11 @@ import org.rstudio.studio.client.rmarkdown.RmdOutput;
 import org.rstudio.studio.client.rmarkdown.events.ConvertToShinyDocEvent;
 import org.rstudio.studio.client.rmarkdown.events.RmdOutputFormatChangedEvent;
 import org.rstudio.studio.client.rmarkdown.events.RmdRenderPendingEvent;
+import org.rstudio.studio.client.rmarkdown.model.NotebookQueueUnit;
 import org.rstudio.studio.client.rmarkdown.model.RMarkdownContext;
 import org.rstudio.studio.client.rmarkdown.model.RmdFrontMatter;
 import org.rstudio.studio.client.rmarkdown.model.RmdFrontMatterOutputOptions;
 import org.rstudio.studio.client.rmarkdown.model.RmdOutputFormat;
-import org.rstudio.studio.client.rmarkdown.model.RmdTemplateData;
 import org.rstudio.studio.client.rmarkdown.model.RmdTemplateFormat;
 import org.rstudio.studio.client.rmarkdown.model.RmdYamlData;
 import org.rstudio.studio.client.rmarkdown.model.YamlFrontMatter;
@@ -145,6 +145,7 @@ import org.rstudio.studio.client.workbench.views.source.editors.text.cpp.CppComp
 import org.rstudio.studio.client.workbench.views.source.editors.text.cpp.CppCompletionOperation;
 import org.rstudio.studio.client.workbench.views.source.editors.text.events.*;
 import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.TextEditingTargetNotebook;
+import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.events.InterruptChunkEvent;
 import org.rstudio.studio.client.workbench.views.source.editors.text.status.StatusBar;
 import org.rstudio.studio.client.workbench.views.source.editors.text.status.StatusBar.HideMessageHandler;
 import org.rstudio.studio.client.workbench.views.source.editors.text.status.StatusBarPopupMenu;
@@ -185,6 +186,9 @@ public class TextEditingTarget implements
    private static final String NOTEBOOK_TITLE = "notebook_title";
    private static final String NOTEBOOK_AUTHOR = "notebook_author";
    private static final String NOTEBOOK_TYPE = "notebook_type";
+   
+   public final static String DOC_OUTLINE_SIZE    = "docOutlineSize";
+   public final static String DOC_OUTLINE_VISIBLE = "docOutlineVisible";
 
    private static final MyCommandBinder commandBinder =
          GWT.create(MyCommandBinder.class);
@@ -836,7 +840,7 @@ public class TextEditingTarget implements
       return sIncrementalSearchMessage_;
    }
    
-   private boolean moveCursorToNextSectionOrChunk()
+   private boolean moveCursorToNextSectionOrChunk(boolean includeSections)
    {
       Scope current = docDisplay_.getCurrentScope();
       ScopeList scopes = new ScopeList(docDisplay_);
@@ -846,7 +850,7 @@ public class TextEditingTarget implements
       for (int i = 0; i < n; i++)
       {
          Scope scope = scopes.get(i);
-         if (!(scope.isChunk() || scope.isSection()))
+         if (!(scope.isChunk() || (scope.isSection() && includeSections)))
             continue;
          
          if (scope.equals(current))
@@ -862,7 +866,7 @@ public class TextEditingTarget implements
       return false;
    }
    
-   private boolean moveCursorToPreviousSectionOrChunk()
+   private boolean moveCursorToPreviousSectionOrChunk(boolean includeSections)
    {
       ScopeList scopes = new ScopeList(docDisplay_);
       Position cursorPos = docDisplay_.getCursorPosition();
@@ -871,7 +875,7 @@ public class TextEditingTarget implements
       for (int i = n - 1; i >= 0; i--)
       {
          Scope scope = scopes.get(i);
-         if (!(scope.isChunk() || scope.isSection()))
+         if (!(scope.isChunk() || (includeSections && scope.isSection())))
             continue;
          
          if (scope.getPreamble().isBefore(cursorPos))
@@ -936,7 +940,7 @@ public class TextEditingTarget implements
    {
       if (docDisplay_.getFileType().canGoNextPrevSection())
       {
-         if (!moveCursorToNextSectionOrChunk())
+         if (!moveCursorToNextSectionOrChunk(true))
             docDisplay_.gotoPageDown();
       }
       else
@@ -950,13 +954,25 @@ public class TextEditingTarget implements
    {
       if (docDisplay_.getFileType().canGoNextPrevSection())
       {
-         if (!moveCursorToPreviousSectionOrChunk())
+         if (!moveCursorToPreviousSectionOrChunk(true))
             docDisplay_.gotoPageUp();
       }
       else
       {
          docDisplay_.gotoPageUp();
       }
+   }
+   
+   @Handler
+   void onGoToNextChunk()
+   {
+      moveCursorToNextSectionOrChunk(false);
+   }
+   
+   @Handler
+   void onGoToPrevChunk()
+   {
+      moveCursorToPreviousSectionOrChunk(false);
    }
    
    @Override
@@ -1162,6 +1178,11 @@ public class TextEditingTarget implements
          }
          isDebugWarningVisible_ = false;
       }      
+   }
+   
+   public void showWarningMessage(String message)
+   {
+      view_.showWarningBar(message);
    }
    
    private void jumpToPreviousFunction()
@@ -1997,6 +2018,11 @@ public class TextEditingTarget implements
    {
       return themeHelper_.addEditorThemeStyleChangedHandler(handler);
    }
+   
+   public HandlerRegistration addInterruptChunkHandler(InterruptChunkEvent.Handler handler)
+   {
+      return handlers_.addHandler(InterruptChunkEvent.TYPE, handler);
+   }
 
    public void fireEvent(GwtEvent<?> event)
    {
@@ -2033,10 +2059,10 @@ public class TextEditingTarget implements
          }
       });
       
-      // let the notebook know we activated (if necessary)
+      // notify notebook of activation if necessary
       if (notebook_ != null)
          notebook_.onActivate();
-
+      
       view_.onActivate();
    }
 
@@ -3121,6 +3147,41 @@ public class TextEditingTarget implements
       }
    }
 
+   @Handler
+   public void onNotebookCollapseAllOutput()
+   {
+      if (notebook_ != null)
+         notebook_.onNotebookCollapseAllOutput();
+   }
+
+   @Handler
+   public void onNotebookExpandAllOutput()
+   {
+      if (notebook_ != null)
+         notebook_.onNotebookExpandAllOutput();
+   }
+   
+   @Handler
+   public void onNotebookClearAllOutput()
+   {
+      if (notebook_ != null)
+         notebook_.onNotebookClearAllOutput();
+   }
+   
+   @Handler
+   public void onRestartRRunAllChunks()
+   {
+      if (notebook_ != null)
+         notebook_.onRestartRRunAllChunks();
+   }
+
+   @Handler
+   public void onRestartRClearOutput()
+   {
+      if (notebook_ != null)
+         notebook_.onRestartRClearOutput();
+   }
+   
    @SuppressWarnings("deprecation") // GWT emulation only provides isSpace
    private void doCommentUncomment(String commentStart,
                                    String commentEnd)
@@ -3488,16 +3549,13 @@ public class TextEditingTarget implements
    
    private String getRmdFrontMatter()
    {
-      return YamlFrontMatter.getFrontMatter(docDisplay_.getCode());
+      return YamlFrontMatter.getFrontMatter(docDisplay_);
    }
    
    private void applyRmdFrontMatter(String yaml)
    {
-      String code = docDisplay_.getCode();
-      String newCode = YamlFrontMatter.applyFrontMatter(code, yaml);
-      if (!code.equals(newCode)) 
+      if (YamlFrontMatter.applyFrontMatter(docDisplay_, yaml))
       {
-         docDisplay_.setCode(newCode, true);
          updateRmdFormatList();
       }
    }
@@ -3551,6 +3609,13 @@ public class TextEditingTarget implements
             JsArray<RmdTemplateFormat> formats = selTemplate.template.getFormats();
             for (int i = 0; i < formats.length(); i++)
             {
+               // skip notebook format (will enable it later if discovered)
+               if (formats.get(i).getName() == 
+                     RmdOutputFormat.OUTPUT_HTML_NOTEBOOK)
+               {
+                  continue;
+               }
+
                String uiName = formats.get(i).getUiName();
                formatList.add(uiName);
                valueList.add(formats.get(i).getName());
@@ -3561,11 +3626,22 @@ public class TextEditingTarget implements
                }
             }
          }
-             
+         
          // add formats not in the selected template 
+         boolean isNotebook = false;
          List<String> outputFormats = getOutputFormats();
-         for (String format : outputFormats)
+         for (int i = 0; i < outputFormats.size(); i++)
          {
+            String format = outputFormats.get(i);
+            if (format == RmdOutputFormat.OUTPUT_HTML_NOTEBOOK)
+            {
+               if (i == 0)
+                  isNotebook = true;
+               formatList.add(0, "Notebook");
+               valueList.add(0, format);
+               extensionList.add(0, ".nb.html");
+               continue;
+            }
             if (!valueList.contains(format))
             {
                String uiName = format;
@@ -3578,12 +3654,11 @@ public class TextEditingTarget implements
             }
          }
          
-         boolean isNotebook = isRmdNotebook();
-
          view_.setFormatOptions(fileType_, 
-                                !isNotebook && getCustomKnit().length() == 0,
+                                // can choose output formats
+                                getCustomKnit().length() == 0,
                                 // can edit format options
-                                !isNotebook && selTemplate != null,
+                                selTemplate != null,
                                 formatList, 
                                 valueList, 
                                 extensionList,
@@ -3604,24 +3679,19 @@ public class TextEditingTarget implements
             view_.setIsNotebookFormat();
          }
       }
+      
+      if (isShinyDoc())
+      {
+         // turn off inline output in Shiny documents (if it's not already)
+         if (docDisplay_.showChunkOutputInline())
+            docDisplay_.setShowChunkOutputInline(false);
+      }
    }
    
    private void setRmdFormat(String formatName)
    {
-      // match based on selected template
-      RmdSelectedTemplate selTemplate = getSelectedTemplate();
-      if (selTemplate != null)
-      {
-         // if this is the current format, we don't need to change the front matter
-         if (selTemplate.format.equals(formatName))
-         {
-            renderRmd();
-            return;
-         }
-      }
-       
-      // look for other formats, if the target format name already 
-      // matches the first format then just render and return
+      // If the target format name already matches the first format then just
+      // render and return
       List<String> outputFormats = getOutputFormats();
       if (outputFormats.size() > 0 && outputFormats.get(0).equals(formatName))
       {
@@ -3872,9 +3942,10 @@ public class TextEditingTarget implements
       
       if (executeChunks)
       {
-         executePreviousChunks(Position.create(
+         executeChunks(Position.create(
                docDisplay_.getDocumentEnd().getRow() + 1,
-               0));
+               0),
+               TextEditingTargetScopeHelper.PREVIOUS_CHUNKS);
       }
       else
       {
@@ -4083,7 +4154,7 @@ public class TextEditingTarget implements
    {
       docDisplay_.getScopeTree();
       executeSweaveChunk(scopeHelper_.getCurrentSweaveChunk(position), 
-            TextEditingTargetNotebook.MODE_SINGLE, false);
+            NotebookQueueUnit.EXEC_MODE_SINGLE, false);
    }
    
    public void dequeueChunk(int row)
@@ -4100,7 +4171,7 @@ public class TextEditingTarget implements
       docDisplay_.getScopeTree();
       
       executeSweaveChunk(scopeHelper_.getCurrentSweaveChunk(), 
-           TextEditingTargetNotebook.MODE_SINGLE, false);
+           NotebookQueueUnit.EXEC_MODE_SINGLE, false);
    }
    
    @Handler
@@ -4112,7 +4183,7 @@ public class TextEditingTarget implements
       docDisplay_.getScopeTree();
       
       Scope nextChunk = scopeHelper_.getNextSweaveChunk();
-      executeSweaveChunk(nextChunk, TextEditingTargetNotebook.MODE_SINGLE, 
+      executeSweaveChunk(nextChunk, NotebookQueueUnit.EXEC_MODE_SINGLE, 
             true);
       docDisplay_.setCursorPosition(nextChunk.getBodyStart());
       docDisplay_.ensureCursorVisible();
@@ -4121,20 +4192,20 @@ public class TextEditingTarget implements
    @Handler
    void onExecutePreviousChunks()
    {
-      executePreviousChunks(null);
+      executeChunks(null, TextEditingTargetScopeHelper.PREVIOUS_CHUNKS);
    }
    
    @Handler
    void onExecuteSubsequentChunks()
    {
-      globalDisplay_.showNotYetImplemented();
+      executeChunks(null, TextEditingTargetScopeHelper.FOLLOWING_CHUNKS);
    }
    
-   public void executePreviousChunks(final Position position)
+   public void executeChunks(final Position position, int which)
    {
       if (docDisplay_.showChunkOutputInline())
       {
-         executePreviousChunksNotebookMode(position);
+         executeChunksNotebookMode(position, which);
          return;
       }
       
@@ -4143,8 +4214,9 @@ public class TextEditingTarget implements
       // a Scope with an end.
       docDisplay_.getScopeTree();
       
-      // execute the previous chunks
-      Scope[] previousScopes = scopeHelper_.getPreviousSweaveChunks(position);
+      // execute the chunks
+      Scope[] previousScopes = scopeHelper_.getSweaveChunks(position,
+            which);
       
       StringBuilder builder = new StringBuilder();
       for (Scope scope : previousScopes)
@@ -4185,7 +4257,7 @@ public class TextEditingTarget implements
       }
    }
    
-   public void executePreviousChunksNotebookMode(Position position)
+   public void executeChunksNotebookMode(Position position, int which)
    {
       // HACK: This is just to force the entire function tree to be built.
       // It's the easiest way to make sure getCurrentScope() returns
@@ -4193,35 +4265,60 @@ public class TextEditingTarget implements
       docDisplay_.getScopeTree();
       
       // execute the previous chunks
-      Scope[] previousScopes = scopeHelper_.getPreviousSweaveChunks(position);
+      Scope[] previousScopes = scopeHelper_.getSweaveChunks(position, which);
 
-      // prepare the status bar
+      // create job description
+      String jobDesc = "";
       if (previousScopes.length > 0)
       {
          if (position != null &&
              position.getRow() > docDisplay_.getDocumentEnd().getRow())
-            statusBar_.showNotebookProgress("Run All");
-         else
-            statusBar_.showNotebookProgress("Run Previous");
+            jobDesc = "Run All";
+         else if (which == TextEditingTargetScopeHelper.PREVIOUS_CHUNKS)
+            jobDesc = "Run Previous";
+         else if (which == TextEditingTargetScopeHelper.FOLLOWING_CHUNKS)
+            jobDesc = "Run After";
       }
 
+      ArrayList<Scope> scopes = new ArrayList<Scope>();
       for (Scope scope : previousScopes)
-         executeSweaveChunk(scope, TextEditingTargetNotebook.MODE_BATCH, false);
+      {
+         if (isExecutableChunk(scope))
+            scopes.add(scope);
+      }
+      
+      if (!scopes.isEmpty())
+         notebook_.executeChunks(jobDesc, scopes);
    }
    
    @Handler
    public void onExecuteSetupChunk()
    {
-      JsArray<Scope> scopes = docDisplay_.getScopeTree();
-      for (int i = 0; i < scopes.length(); i++)
+      // attempt to find the setup scope by name
+      Scope setupScope = null;
+      if (notebook_ != null)
+         setupScope = notebook_.getSetupChunkScope();
+
+      // if we didn't find it by name, flatten the scope list and find the
+      // first chunk
+      if (setupScope == null)
       {
-         Scope scope = scopes.get(i);
-         if (scope.isChunk())
+         ScopeList scopes = new ScopeList(docDisplay_);
+         for (Scope scope: scopes)
          {
-            executeSweaveChunk(scope, TextEditingTargetNotebook.MODE_BATCH, 
-                  false);
-            return;
+            if (scope.isChunk())
+            {
+               setupScope = scope;
+               break;
+            }
          }
+      }
+      
+      // if we found a candidate, run it
+      if (setupScope != null)
+      {
+         executeSweaveChunk(setupScope, NotebookQueueUnit.EXEC_MODE_BATCH, 
+               false);
       }
    }
 
@@ -4283,17 +4380,14 @@ public class TextEditingTarget implements
             if (!range.isEmpty())
             {
                codeExecution_.setLastExecuted(range.getStart(), range.getEnd());
-               String code = scopeHelper_.getSweaveChunkText(chunk);
-               String options = 
-                     TextEditingTargetRMarkdownHelper.getRmdChunkOptionText(
-                           chunk, docDisplay_);
                if (fileType_.isRmd() && 
                    docDisplay_.showChunkOutputInline())
                {
-                  notebook_.executeChunk(chunk, code, options, mode);
+                  notebook_.executeChunk(chunk);
                }
                else
                {
+                  String code = scopeHelper_.getSweaveChunkText(chunk);
                   events_.fireEvent(new SendToConsoleEvent(code, true));
                }
                docDisplay_.collapseSelection(true);   
@@ -4458,6 +4552,13 @@ public class TextEditingTarget implements
           extendedType_.startsWith(SourceDocument.XT_SHINY_PREFIX))
       {
          runShinyApp();
+         return;
+      }
+      
+      // if the document is an R Markdown notebook, run all its chunks instead
+      if (fileType_.isRmd() && isRmdNotebook()) 
+      {
+         onExecuteAllCode();
          return;
       }
       
@@ -4731,32 +4832,54 @@ public class TextEditingTarget implements
                                       isRmdNotebook() ? RmdOutput.TYPE_NOTEBOOK:
                                                         RmdOutput.TYPE_STATIC;
       
-      saveThenExecute(null, new Command() {
+      final Command command = new Command()
+      {
          @Override
          public void execute()
          {
-            boolean asTempfile = isPackageDocumentationFile();
-            
-            rmarkdownHelper_.renderRMarkdown(
-               docUpdateSentinel_.getPath(),
-               docDisplay_.getCursorPosition().getRow() + 1,
-               null,
-               docUpdateSentinel_.getEncoding(),
-               paramsFile,
-               asTempfile,
-               type,
-               false);
+            saveThenExecute(null, new Command() {
+               @Override
+               public void execute()
+               {
+                  boolean asTempfile = isPackageDocumentationFile();
+
+                  rmarkdownHelper_.renderRMarkdown(
+                        docUpdateSentinel_.getPath(),
+                        docDisplay_.getCursorPosition().getRow() + 1,
+                        null,
+                        docUpdateSentinel_.getEncoding(),
+                        paramsFile,
+                        asTempfile,
+                        type,
+                        false);
+               }
+            });  
          }
-      });  
+      };
+      
+      if (isRmdNotebook())
+         dependencyManager_.withRMarkdown("Creating R Notebooks", command);
+      else
+         command.execute();
    }
    
    
    public boolean isRmdNotebook()
    {
-       RmdSelectedTemplate selTemplate = getSelectedTemplate();
-       return selTemplate != null &&
-              selTemplate.template.getName() == 
-                                 RmdTemplateData.NOTEBOOK_TEMPLATE;
+      List<String> outputFormats = getOutputFormats();
+      return outputFormats.size() > 0 && 
+             outputFormats.get(0) == RmdOutputFormat.OUTPUT_HTML_NOTEBOOK;
+   }
+
+   public boolean hasRmdNotebook()
+   {
+      List<String> outputFormats = getOutputFormats();
+      for (String format: outputFormats)
+      {
+         if (format == RmdOutputFormat.OUTPUT_HTML_NOTEBOOK)
+            return true;
+      }
+      return false;
    }
 
    private boolean isShinyDoc()
@@ -4924,7 +5047,7 @@ public class TextEditingTarget implements
                   else
                   {
                      globalDisplay_.showErrorMessage(
-                                       "Unable to Compile Notebook", 
+                                       "Unable to Compile Report", 
                                        response.getFailureMessage());
                   }
                }
@@ -4970,7 +5093,7 @@ public class TextEditingTarget implements
       }
       else
       {
-         if (!rmarkdownHelper_.verifyPrerequisites("Compile Notebook",
+         if (!rmarkdownHelper_.verifyPrerequisites("Compile Report",
                view_,
                FileTypeRegistry.RMARKDOWN))
          {
@@ -5043,18 +5166,6 @@ public class TextEditingTarget implements
              });
          }
       });  
-   }
-   
-   @Handler
-   void onRestartRClearOutput()
-   {
-      globalDisplay_.showNotYetImplemented();
-   }
-   
-   @Handler
-   void onRestartRRunAllChunks()
-   {
-      globalDisplay_.showNotYetImplemented();
    }
    
    @Handler
@@ -5957,12 +6068,12 @@ public class TextEditingTarget implements
    {
       prefs_.preferredDocumentOutlineWidth().setGlobalValue((int) size);
       prefs_.writeUIPrefs();
-      docUpdateSentinel_.setProperty("docOutlineSize", size + "");
+      docUpdateSentinel_.setProperty(DOC_OUTLINE_SIZE, size + "");
    }
    
    public double getPreferredOutlineWidgetSize()
    {
-      String property = docUpdateSentinel_.getProperty("docOutlineSize");
+      String property = docUpdateSentinel_.getProperty(DOC_OUTLINE_SIZE);
       if (StringUtil.isNullOrEmpty(property))
          return prefs_.preferredDocumentOutlineWidth().getGlobalValue();
       
@@ -5987,12 +6098,12 @@ public class TextEditingTarget implements
    
    public void setPreferredOutlineWidgetVisibility(boolean visible)
    {
-      docUpdateSentinel_.setProperty("docOutlineVisible", visible ? "1" : "0");
+      docUpdateSentinel_.setProperty(DOC_OUTLINE_VISIBLE, visible ? "1" : "0");
    }
    
    public boolean getPreferredOutlineWidgetVisibility()
    {
-      String property = docUpdateSentinel_.getProperty("docOutlineVisible");
+      String property = docUpdateSentinel_.getProperty(DOC_OUTLINE_VISIBLE);
       return StringUtil.isNullOrEmpty(property)
             ? (getTextFileType().isRmd() && prefs_.showDocumentOutlineRmd().getGlobalValue())
             : Integer.parseInt(property) > 0;

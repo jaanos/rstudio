@@ -62,6 +62,7 @@ public interface ThemeStyles extends CssResource
 
    String toolbar();
    String secondaryToolbar();
+   String secondaryToolbarPanel();
    String globalToolbar();
    String desktopGlobalToolbar();
    String webGlobalToolbar();
@@ -170,4 +171,6 @@ public interface ThemeStyles extends CssResource
    String handCursor();
    
    String borderedIFrame();
+   
+   String toolbarInfoLabel();
 }

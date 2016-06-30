@@ -71,16 +71,18 @@
 * SVN: avoid recursive revert when reverting changes to modified directory properties
 * Autocompletion: fixed errors printed in console when 'devtools::load_all()' active
 * Autocompletion: fixed errors printed in console for functions 'force', 'identity'
+* Autocompletion: ensure .DollarNames method respected when discovered
+* Autocompletion: avoid errors when retrieving completions in debugger
 * Viewer: Fixed issue in 'Export -> Copy to Clipboard' when IDE not at default zoom level
 * Fix hang caused by large, heavily-nested S4 objects
 * Fix for 'httpdPort' detection error sometimes seen with R built from source
 * Fixed a hang on Windows with 64-bit R when attempting to load a corrupted workspace
 * Fixed an issue where non-interactive addins could not be executed in popped out windows
-* Autocompletion: avoid errors when retrieving completions in debugger
 * Diagnostics: fix false positive errors with '{' following function calls
 * Diagnostics: engine better understands 'data()' calls (fixes 'no symbol in scope' false positive)
 * Improved performance of document tokenization (fix laggy typing)
-* Fix block commenting of Sweave chunks
+* Sweave: Fix block commenting of chunks
+* Sweave: Fixed an issue where TOC headings weren't displayed in document outline
 * Fix highlighting of escaped '$' in inline Mathjax expressions
 * Fix editor preview vanishing on zoom level change
 * Emacs mode: C-f now moves the cursor forward instead of opening Find dialog
@@ -103,6 +105,7 @@
 * Fix copy, cut, paste handling when Emacs mode enabled
 * Avoid perturbing RNG state when invoking View()
 * Fix unlinked directories in Files pane when other users' folders are browseable
+* Fixed an issue where nested folds were not preserved correctly on save / load
 * Prevent lines terminated by \r\n from entering editor (cause of many subtle problems)
 * Fix error message when invoking View() on an object with no columns
 * Fix blank screen on log-in when PAM username capitalization doesn't match system

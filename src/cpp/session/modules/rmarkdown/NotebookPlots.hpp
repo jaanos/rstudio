@@ -18,6 +18,13 @@
 #define SESSION_NOTEBOOK_PLOTS_HPP
 
 #include <boost/function.hpp>
+#include <boost/signals/connection.hpp>
+#include <core/FilePath.hpp>
+#include <r/RSexp.hpp>
+
+#include "NotebookCapture.hpp"
+
+#define kDisplayListExt ".snapshot"
 
 namespace rstudio {
 namespace core {
@@ -32,7 +39,44 @@ namespace modules {
 namespace rmarkdown {
 namespace notebook {
 
-core::Error beginPlotCapture(const core::FilePath& plotFolder);
+enum PlotSizeBehavior
+{
+   PlotSizeAutomatic,
+   PlotSizeManual
+};
+
+class PlotCapture : public NotebookCapture
+{
+public:
+   PlotCapture();
+   ~PlotCapture();
+   core::Error connectPlots(double height, double width, 
+           PlotSizeBehavior sizeBehavior,
+           const core::FilePath& plotFolder);
+   void disconnect();
+   void onExprComplete();
+private:
+   core::Error createGraphicsDevice();
+   void processPlots(bool ignoreEmpty);
+   void removeGraphicsDevice();
+   void onNewPlot();
+   void saveSnapshot();
+   void onBeforeNewPlot();
+
+   core::FilePath plotFolder_;
+   bool hasPlots_;
+   PlotSizeBehavior sizeBehavior_;
+   core::FilePath snapshotFile_;
+   r::sexp::PreservedSEXP sexpMargins_;
+   boost::signals::connection onBeforeNewPlot_;
+   boost::signals::connection onBeforeNewGridPage_;
+   boost::signals::connection onNewPlot_;
+   double width_;
+   double height_;
+};
+
+
+core::Error initPlots();
 
 } // namespace notebook
 } // namespace rmarkdown

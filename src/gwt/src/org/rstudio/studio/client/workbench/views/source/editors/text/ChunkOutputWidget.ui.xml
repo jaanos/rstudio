@@ -60,7 +60,7 @@
    {
       position: relative;
       overflow: auto;
-      max-height: 750px;
+      max-height: 630px;
       transition: opacity 400ms ease;
       margin: 10px;
    }
@@ -114,6 +114,12 @@
       margin: -10px 0 0 -10px;
       transition: opacity 400ms ease;
    }
+   
+   .pendingResize
+   {
+      opacity: 0.5;
+      transition: opacity 400ms ease;
+   }
    </ui:style>
    <g:HTMLPanel styleName="{style.outer}">
       <g:HTMLPanel styleName="{style.expander}"
@@ -121,14 +127,12 @@
       <g:HTMLPanel ui:field="frame_" styleName="{style.frame}">
         <g:Image styleName="{style.clear}"
                  ui:field="clear_"
-                 resource="{res.removeChunkIcon}"></g:Image>
+                 resource="{res.removeChunkIcon}"
+                 title="Clear Output"></g:Image>
         <g:Image styleName="{style.expand}" 
                  resource="{res.collapseChunkIcon}"
+                 title="Expand/Collapse Output"
                  ui:field="expand_"></g:Image>
-        <g:Label styleName="{style.empty}" 
-                 ui:field="emptyIndicator_"
-                 text="No output produced."
-                 visible="false"></g:Label>
         <g:HTMLPanel styleName="{style.root}" ui:field="root_">
         </g:HTMLPanel>
       </g:HTMLPanel>

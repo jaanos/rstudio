@@ -148,6 +148,7 @@ import org.rstudio.studio.client.workbench.views.source.model.DataItem;
 import org.rstudio.studio.client.workbench.views.source.model.DocTabDragParams;
 import org.rstudio.studio.client.workbench.views.source.model.RdShellResult;
 import org.rstudio.studio.client.workbench.views.source.model.SourceDocument;
+import org.rstudio.studio.client.workbench.views.source.model.SourceDocumentResult;
 import org.rstudio.studio.client.workbench.views.source.model.SourceNavigation;
 import org.rstudio.studio.client.workbench.views.source.model.SourceNavigationHistory;
 import org.rstudio.studio.client.workbench.views.source.model.SourcePosition;
@@ -351,6 +352,8 @@ public class Source implements InsertSourceHandler,
       dynamicCommands_.add(commands.knitWithParameters());
       dynamicCommands_.add(commands.goToNextSection());
       dynamicCommands_.add(commands.goToPrevSection());
+      dynamicCommands_.add(commands.goToNextChunk());
+      dynamicCommands_.add(commands.goToPrevChunk());
       dynamicCommands_.add(commands.profileCode());
       dynamicCommands_.add(commands.profileCodeWithoutFocus());
       dynamicCommands_.add(commands.saveProfileAs());
@@ -363,13 +366,6 @@ public class Source implements InsertSourceHandler,
       {
          command.setVisible(false);
          command.setEnabled(false);
-      }
-      
-      // feature flag for notebook
-      if (!uiPrefs_.showRmdChunkOutputInline().getValue())
-      {
-         commands.newRNotebook().setEnabled(false);
-         commands.newRNotebook().setVisible(false);
       }
 
       // fake shortcuts for commands which we handle at a lower level
@@ -404,7 +400,7 @@ public class Source implements InsertSourceHandler,
                   new SimpleRequestCallback<SourceDocument>("Edit Data Frame") {
                      public void onResponseReceived(SourceDocument response)
                      {
-                        addTab(response);
+                        addTab(response, OPEN_INTERACTIVE);
                      }
                   });
          }
@@ -822,7 +818,7 @@ public class Source implements InsertSourceHandler,
              (SourceWindowManager.isMainSourceWindow() && 
               !windowManager_.isSourceWindowOpen(docWindowId)))
          {
-            EditingTarget editor = addTab(doc, true);
+            EditingTarget editor = addTab(doc, true, OPEN_REPLAY);
             
             // if this is a source window, check to see if it was opened to
             // pop out a particular doc, and restore that doc's position if so
@@ -943,7 +939,7 @@ public class Source implements InsertSourceHandler,
                @Override
                public void onResponseReceived(SourceDocument response)
                {
-                  addTab(response);
+                  addTab(response, OPEN_INTERACTIVE);
                }
             });
    }
@@ -979,7 +975,7 @@ public class Source implements InsertSourceHandler,
                @Override
                public void onResponseReceived(SourceDocument response)
                {
-                  addTab(response);
+                  addTab(response, OPEN_INTERACTIVE);
                }
             });
    }
@@ -1012,7 +1008,7 @@ public class Source implements InsertSourceHandler,
             @Override
             public void onResponseReceived(SourceDocument response)
             {
-               addTab(response);
+               addTab(response, OPEN_INTERACTIVE);
             }
             
             @Override
@@ -1038,7 +1034,7 @@ public class Source implements InsertSourceHandler,
                @Override
                public void onResponseReceived(SourceDocument response)
                {
-                  addTab(response);
+                  addTab(response, OPEN_INTERACTIVE);
                }
                
                @Override
@@ -1609,7 +1605,7 @@ public class Source implements InsertSourceHandler,
                @Override
                public void onResponseReceived(SourceDocument newDoc)
                {
-                  EditingTarget target = addTab(newDoc);
+                  EditingTarget target = addTab(newDoc, OPEN_INTERACTIVE);
                   
                   if (contents != null)
                   {
@@ -2392,6 +2388,65 @@ public class Source implements InsertSourceHandler,
             });
    }
    
+   
+   
+   public void onNewDocumentWithCode(final NewDocumentWithCodeEvent event)
+   {
+      // determine the type
+      final EditableFileType docType;
+      if (event.getType().equals(NewDocumentWithCodeEvent.R_SCRIPT))
+         docType = FileTypeRegistry.R;
+      else
+         docType = FileTypeRegistry.RMARKDOWN;
+      
+      // command to create and run the new doc
+      Command newDocCommand = new Command() {
+         @Override
+         public void execute()
+         {
+            newDoc(docType,  
+                  new ResultCallback<EditingTarget, ServerError>() {
+               public void onSuccess(EditingTarget arg)
+               {
+                  TextEditingTarget editingTarget = (TextEditingTarget)arg;
+                  editingTarget.insertCode(event.getCode(), false);
+                  
+                  if (event.getCursorPosition() != null)
+                  {
+                     editingTarget.navigateToPosition(event.getCursorPosition(),
+                                                      false);
+                  }
+                  
+                  if (event.getExecute())
+                  {
+                     if (docType.equals(FileTypeRegistry.R))
+                     {
+                        commands_.executeToCurrentLine().execute();
+                        commands_.activateSource().execute();
+                     }
+                     else
+                     {
+                        commands_.executePreviousChunks().execute();
+                     }
+                  }
+               }
+            });
+         }
+      };
+     
+      // do it
+      if (docType.equals(FileTypeRegistry.R))
+      {
+         newDocCommand.execute();
+      }
+      else
+      {
+         dependencyManager_.withRMarkdown("R Notebook",
+                                          "Create R Notebook", 
+                                          newDocCommand);
+      }
+   }
+   
     
    public void onOpenSourceFile(OpenSourceFileEvent event)
    {
@@ -2544,7 +2599,7 @@ public class Source implements InsertSourceHandler,
             @Override
             public void onResponseReceived(final SourceDocument doc)
             {
-               editingTargetAction.execute(addTab(doc));
+               editingTargetAction.execute(addTab(doc, OPEN_REPLAY));
             }
 
             @Override
@@ -2688,6 +2743,59 @@ public class Source implements InsertSourceHandler,
             });  
    }
    
+   private void openNotebook(
+         final FileSystemItem rmdFile, 
+         final SourceDocumentResult doc,
+         final ResultCallback<EditingTarget, ServerError> resultCallback)
+   {
+      if (!StringUtil.isNullOrEmpty(doc.getDocPath()))
+      {
+         // this happens if we created the R Markdown file, or if the R Markdown
+         // file on disk matched the one inside the notebook
+         openFileFromServer(rmdFile, 
+               FileTypeRegistry.RMARKDOWN, resultCallback);
+      }
+      else if (!StringUtil.isNullOrEmpty(doc.getDocId()))
+      {
+         // this happens when we have to open an untitled buffer for the the
+         // notebook (usually because the of a conflict between the Rmd on disk
+         // and the one in the .nb.html file)
+         server_.getSourceDocument(doc.getDocId(), 
+               new ServerRequestCallback<SourceDocument>()
+         {
+            @Override
+            public void onResponseReceived(SourceDocument doc)
+            {
+               // create the editor
+               EditingTarget target = 
+                     addTab(doc, OPEN_INTERACTIVE);
+               
+               // show a warning bar 
+               if (target instanceof TextEditingTarget)
+               {
+                  ((TextEditingTarget) target).showWarningMessage(
+                        "This notebook has the same name as an R Markdown " +
+                        "file, but doesn't match it.");
+               }
+               resultCallback.onSuccess(target);
+            }
+
+            @Override
+            public void onError(ServerError error)
+            {
+               
+               globalDisplay_.showErrorMessage(
+                  "Notebook Open Failed", 
+                  "This notebook could not be opened. " +
+                  "If the error persists, try removing the " +
+                  "accompanying R Markdown file. \n\n" +
+                  error.getMessage());
+               resultCallback.onFailure(error);
+            }
+         });
+      }
+   }
+   
    private void openNotebook(final FileSystemItem rnbFile,
                              final TextFileType fileType,
                              final ResultCallback<EditingTarget, ServerError> resultCallback)
@@ -2710,19 +2818,21 @@ public class Source implements InsertSourceHandler,
          {
             server_.extractRmdFromNotebook(
                   rnbPath,
-                  rmdPath,
-                  new ServerRequestCallback<Boolean>()
+                  new ServerRequestCallback<SourceDocumentResult>()
                   {
                      @Override
-                     public void onResponseReceived(Boolean success)
+                     public void onResponseReceived(SourceDocumentResult doc)
                      {
-                        openFileFromServer(rmdFile, FileTypeRegistry.RMARKDOWN, resultCallback);
+                        openNotebook(rmdFile, doc, resultCallback);
                      }
 
                      @Override
                      public void onError(ServerError error)
                      {
-                        Debug.logError(error);
+                        globalDisplay_.showErrorMessage("Notebook Open Failed", 
+                              "This notebook could not be opened. \n\n" +
+                              error.getMessage());
+                        resultCallback.onFailure(error);
                      }
                   });
          }
@@ -2870,7 +2980,7 @@ public class Source implements InsertSourceHandler,
                {
                   dismissProgress.execute();
                   pMruList_.get().add(document.getPath());
-                  EditingTarget target = addTab(document);
+                  EditingTarget target = addTab(document, OPEN_INTERACTIVE);
                   if (resultCallback != null)
                      resultCallback.onSuccess(target);
                }
@@ -2882,18 +2992,21 @@ public class Source implements InsertSourceHandler,
       return target.asWidget();
    }
    
-   private EditingTarget addTab(SourceDocument doc)
+   private EditingTarget addTab(SourceDocument doc, int mode)
    {
-      return addTab(doc, false);
+      return addTab(doc, false, mode);
    }
    
-   private EditingTarget addTab(SourceDocument doc, boolean atEnd)
+   private EditingTarget addTab(SourceDocument doc, boolean atEnd, 
+         int mode)
    {
       // by default, add at the tab immediately after the current tab
-      return addTab(doc, atEnd ? null : getPhysicalTabIndex() + 1);
+      return addTab(doc, atEnd ? null : getPhysicalTabIndex() + 1,
+            mode);
    }
 
-   private EditingTarget addTab(SourceDocument doc, Integer position)
+   private EditingTarget addTab(SourceDocument doc, Integer position, 
+         int mode)
    {
       final String defaultNamePrefix = editingTargetSource_.getDefaultNamePrefix(doc);
       final EditingTarget target = editingTargetSource_.getEditingTarget(
@@ -2974,7 +3087,7 @@ public class Source implements InsertSourceHandler,
          }
       });
       
-      events_.fireEvent(new SourceDocAddedEvent(doc));
+      events_.fireEvent(new SourceDocAddedEvent(doc, mode));
       
       // adding a tab may enable commands that are only available when 
       // multiple documents are open; if this is the second document, go check
@@ -4180,4 +4293,6 @@ public class Source implements InsertSourceHandler,
  
    public final static int TYPE_FILE_BACKED = 0;
    public final static int TYPE_UNTITLED    = 1;
+   public final static int OPEN_INTERACTIVE = 0;
+   public final static int OPEN_REPLAY      = 1;
 }

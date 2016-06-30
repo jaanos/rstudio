@@ -151,6 +151,16 @@ const int kRprofCreated = 129;
 const int kEditorCommand = 131;
 const int kPreviewRmd = 132;
 const int kWebsiteFileSaved = 133;
+const int kChunkPlotRefreshed = 134;
+const int kChunkPlotRefreshFinished = 135;
+const int kReloadWithLastChanceSave = 136;
+const int kConnectionUpdated = 139;
+const int kEnableConnections = 140;
+const int kConnectionListChanged = 141;
+const int kActiveConnectionsChanged = 142;
+const int kConnectionOpened = 143;
+const int kNotebookRangeExecuted = 144;
+const int kChunkExecStateChanged = 145;
 }
 
 void ClientEvent::init(int type, const json::Value& data)
@@ -412,6 +422,26 @@ std::string ClientEvent::typeName() const
          return "preview_rmd";
       case client_events::kWebsiteFileSaved:
          return "website_file_saved";
+      case client_events::kChunkPlotRefreshed:
+         return "chunk_plot_refreshed";
+      case client_events::kChunkPlotRefreshFinished:
+         return "chunk_plot_refresh_finished";
+      case client_events::kReloadWithLastChanceSave:
+         return "reload_with_last_chance_save";
+      case client_events::kConnectionUpdated:
+         return "connection_updated";
+      case client_events::kEnableConnections:
+         return "enable_connections";
+      case client_events::kConnectionListChanged:
+         return "connection_list_changed";
+      case client_events::kActiveConnectionsChanged:
+         return "active_connections_changed";
+      case client_events::kConnectionOpened:
+         return "connection_opened";
+      case client_events::kNotebookRangeExecuted:
+         return "notebook_range_executed";
+      case client_events::kChunkExecStateChanged:
+         return "chunk_exec_state_changed";
       default:
          LOG_WARNING_MESSAGE("unexpected event type: " + 
                              safe_convert::numberToString(type_));

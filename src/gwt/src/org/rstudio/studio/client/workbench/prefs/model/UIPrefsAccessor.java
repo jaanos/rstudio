@@ -24,6 +24,7 @@ import org.rstudio.studio.client.rsconnect.model.RSConnectAccount;
 import org.rstudio.studio.client.shiny.model.ShinyViewerType;
 import org.rstudio.studio.client.workbench.exportplot.model.ExportPlotOptions;
 import org.rstudio.studio.client.workbench.ui.PaneConfig;
+import org.rstudio.studio.client.workbench.views.connections.model.ConnectionOptions;
 import org.rstudio.studio.client.workbench.views.plots.model.SavePlotAsPdfOptions;
 import org.rstudio.studio.client.workbench.views.source.editors.text.FoldStyle;
 import org.rstudio.studio.client.workbench.views.source.editors.text.themes.AceThemes;
@@ -510,6 +511,11 @@ public class UIPrefsAccessor extends Prefs
       return string("document_author", "");
    }
    
+   public PrefValue<String> connectionsConnectVia()
+   {
+      return string("connect_via", ConnectionOptions.CONNECT_R_CONSOLE);
+   }
+   
    public PrefValue<String> rmdPreferredTemplatePath()
    {
       return string("rmd_preferred_template_path", "");
@@ -535,9 +541,15 @@ public class UIPrefsAccessor extends Prefs
       return object("preferred_publish_account");
    }
    
+   public PrefValue<String> connectionsDbInterface()
+   {
+      return string("connections_db_interface", 
+                    ConnectionOptions.DB_INTERFACE_DPLYR);
+   }
+     
    public PrefValue<Boolean> showRmdChunkOutputInline()
    {
-      return bool("show_rmd_chunk_output_inline", false);
+      return bool("rmd_chunk_output_inline", true);
    }
    
    public PrefValue<Integer> preferredDocumentOutlineWidth()
@@ -553,6 +565,11 @@ public class UIPrefsAccessor extends Prefs
    public PrefValue<Boolean> autoRunSetupChunk()
    {
       return bool("auto_run_setup_chunk", true);
+   }
+   
+   public PrefValue<Boolean> hideConsoleOnChunkExecute()
+   {
+      return bool("hide_console_on_chunk_execute", true);
    }
    
    public static final String DOC_OUTLINE_SHOW_SECTIONS_ONLY = "show_sections_only";

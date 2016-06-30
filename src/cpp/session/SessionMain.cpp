@@ -94,6 +94,7 @@ extern "C" const char *locale2charset(const char *);
 #include <session/SessionPersistentState.hpp>
 #include <session/SessionContentUrls.hpp>
 #include <session/SessionScopes.hpp>
+#include <session/SessionClientEventService.hpp>
 #include <session/RVersionSettings.hpp>
 
 #include "SessionAddins.hpp"
@@ -101,7 +102,6 @@ extern "C" const char *locale2charset(const char *);
 #include "SessionModuleContextInternal.hpp"
 
 #include "SessionClientEventQueue.hpp"
-#include "SessionClientEventService.hpp"
 
 #include <session/SessionRUtil.hpp>
 
@@ -141,6 +141,7 @@ extern "C" const char *locale2charset(const char *);
 #include "modules/SessionLists.hpp"
 #include "modules/build/SessionBuild.hpp"
 #include "modules/clang/SessionClang.hpp"
+#include "modules/connections/SessionConnections.hpp"
 #include "modules/data/SessionData.hpp"
 #include "modules/environment/SessionEnvironment.hpp"
 #include "modules/overlay/SessionOverlay.hpp"
@@ -512,6 +513,9 @@ void handleClientInit(const boost::function<void()>& initFunction,
    std::string initialWorkingDir = module_context::createAliasedPath(
                                                 getInitialWorkingDirectory());
    sessionInfo["initial_working_dir"] = initialWorkingDir;
+   std::string defaultWorkingDir = module_context::createAliasedPath(
+                                                getDefaultWorkingDirectory());
+   sessionInfo["default_working_dir"] = defaultWorkingDir;
 
    // active project file
    if (projects::projectContext().hasProject())
@@ -686,6 +690,11 @@ void handleClientInit(const boost::function<void()>& initFunction,
    sessionInfo["user_home_page_url"] = json::Value();
    
    sessionInfo["r_addins"] = modules::r_addins::addinRegistryAsJson();
+
+   sessionInfo["connections_enabled"] = modules::connections::connectionsEnabled();
+   sessionInfo["activate_connections"] = modules::connections::activateConnections();
+   sessionInfo["connection_list"] = modules::connections::connectionsAsJson();
+   sessionInfo["active_connections"] = modules::connections::activeConnectionsAsJson();
 
    std::string sessionId = module_context::activeSession().id();
    if (sessionId.empty())
@@ -1097,6 +1106,9 @@ void handleConnection(boost::shared_ptr<HttpConnection> ptrConnection,
             // only accept interrupts while R is processing input
             if ( s_rProcessingInput )
                rstudio::r::exec::setInterruptsPending(true);
+
+            // let modules know
+            module_context::events().onUserInterrupt();
          }
 
          // other rpc method, handle it
@@ -1298,7 +1310,9 @@ bool haveRunningChildren()
 
 bool canSuspend(const std::string& prompt)
 {
-   return !haveRunningChildren() && rstudio::r::session::isSuspendable(prompt);
+   return !haveRunningChildren() &&
+          modules::connections::isSuspendable() &&
+          rstudio::r::session::isSuspendable(prompt);
 }
 
 
@@ -1794,6 +1808,7 @@ Error rInit(const rstudio::r::session::RInitInfo& rInitInfo)
 #endif
       (modules::code_search::initialize)
       (modules::clang::initialize)
+      (modules::connections::initialize)
       (modules::files::initialize)
       (modules::find::initialize)
       (modules::environment::initialize)
@@ -2868,6 +2883,40 @@ Error registerAsyncRpcMethod(const std::string& name,
          std::make_pair(name, std::make_pair(false, function)));
    return Success();
 }
+
+namespace {
+
+void performIdleOnlyAsyncRpcMethod(
+      const core::json::JsonRpcRequest& request,
+      const core::json::JsonRpcFunctionContinuation& continuation,
+      const core::json::JsonRpcAsyncFunction& function)
+{
+   if (request.isBackgroundConnection)
+   {
+      module_context::scheduleDelayedWork(
+          boost::posix_time::milliseconds(100),
+          boost::bind(function, request, continuation),
+          true);
+   }
+   else
+   {
+      function(request, continuation);
+   }
+}
+
+
+} // anonymous namespace
+
+Error registerIdleOnlyAsyncRpcMethod(
+                             const std::string& name,
+                             const core::json::JsonRpcAsyncFunction& function)
+{
+   return registerAsyncRpcMethod(name,
+                                 boost::bind(performIdleOnlyAsyncRpcMethod,
+                                                _1, _2, function));
+}
+
+
 
 Error registerRpcMethod(const std::string& name,
                         const core::json::JsonRpcFunction& function)

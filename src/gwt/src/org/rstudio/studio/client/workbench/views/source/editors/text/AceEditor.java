@@ -98,6 +98,7 @@ import org.rstudio.studio.client.workbench.views.source.editors.text.cpp.CppComp
 import org.rstudio.studio.client.workbench.views.source.editors.text.cpp.CppCompletionManager;
 import org.rstudio.studio.client.workbench.views.source.editors.text.events.*;
 import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.ChunkDefinition;
+import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.TextEditingTargetNotebook;
 import org.rstudio.studio.client.workbench.views.source.events.CollabEditStartParams;
 import org.rstudio.studio.client.workbench.views.source.events.RecordNavigationPositionEvent;
 import org.rstudio.studio.client.workbench.views.source.events.RecordNavigationPositionHandler;
@@ -419,12 +420,32 @@ public class AceEditor implements DocDisplay,
                   
                   switch (event.getCommand())
                   {
-                  case PASTE_LAST_YANK:    pasteLastYank();    break;
+                  case YANK_REGION:        yankRegion();       break;
                   case YANK_BEFORE_CURSOR: yankBeforeCursor(); break;
                   case YANK_AFTER_CURSOR:  yankAfterCursor();  break;
+                  case PASTE_LAST_YANK:    pasteLastYank();    break;
                   }
                }
             });
+   }
+   
+   public void yankRegion()
+   {
+      if (isVimModeOn() && !isVimInInsertMode())
+         return;
+      
+      // no-op if there is no selection
+      String selectionValue = getSelectionValue();
+      if (StringUtil.isNullOrEmpty(selectionValue))
+         return;
+      
+      if (Desktop.isDesktop())
+         commands_.cutDummy().execute();
+      else
+      {
+         yankedText_ = getSelectionValue();
+         replaceSelection("");
+      }
    }
    
    public void yankBeforeCursor()
@@ -2863,6 +2884,96 @@ public class AceEditor implements DocDisplay,
 
       return cursor.getRow();
    }
+   
+   private boolean rowEndsInBinaryOp(int row)
+   {
+      // move to the last interesting token on this line 
+      JsArray<Token> tokens = getSession().getTokens(row);
+      for (int i = tokens.length() - 1; i >= 0; i--)
+      {
+         Token t = tokens.get(i);
+         if (t.hasType("text", "comment"))
+            continue;
+         if (t.getType()  == "keyword.operator" ||
+             t.getType()  == "keyword.operator.infix" ||
+             t.getValue() == ",")
+            return true;
+         break;
+      } 
+      return false;
+   }
+
+
+   @Override
+   public Range getMultiLineExpr(Position pos, int startRow, int endRow)
+   {
+      if (!DocumentMode.isSelectionInRMode(this))
+         return null;
+
+      // start with a point range at the beginning of the row
+      Range range = Range.create(pos.getRow(), 0, pos.getRow(), 0);
+      
+      TokenCursor c = getSession().getMode().getCodeModel().getTokenCursor();
+      int row = pos.getRow();
+      
+      // extend the range down until we encounter a line which doesn't end
+      // in a binary operator
+      while (row <= endRow)
+      {
+         // extend the range to include this entire line
+         range = range.extend(row, getLength(row));
+         
+         // expand to include the current bracketed expression, if any
+         if (!c.moveToPosition(range.getEnd()) ||
+              c.getRow() != range.getEnd().getRow())
+            break;
+         if (c.findOpeningBracket(new String[]{"(", "[", "{"}, false))
+         {
+            // don't look upwards for { expressions (likely to be larger than
+            // we're looking for)
+            if (c.currentValue() != "{" || c.getRow() >= row)
+            {
+               range = range.extend(c.getRow(), 0);
+               if (c.fwdToMatchingToken())
+                  range = range.extend(c.getRow(), getLength(c.getRow()));
+               row = range.getEnd().getRow();
+            }
+         }
+      
+         // if we're looking at a binary operator, keep building
+         if (rowEndsInBinaryOp(row))
+            row++;
+         else
+            break;
+      }
+
+      // extend the range up to include lines which end with a binary operator
+      row = range.getStart().getRow() - 1;
+      while (row >= startRow)
+      {
+         if (rowEndsInBinaryOp(row))
+         {
+            // expand to include the current bracketed expression, if any--this
+            // is asymmetric with the above to avoid growing the range upwards
+            // to include large { blocks such as functions and loops
+            c.moveToStartOfRow(row);
+            if (c.findOpeningBracket(new String[]{"(", "["}, false))
+            {
+               range = range.extend(c.getRow(), 0);
+               if (c.fwdToMatchingToken())
+                  range = range.extend(c.getRow(), getLength(c.getRow()));
+               row = range.getStart().getRow();
+            }
+
+            range = range.extend(row, 0);
+            row--;
+         }
+         else
+            break;
+      }
+      
+      return range;
+   }
 
    // ---- Annotation related operations
 
@@ -3088,13 +3199,16 @@ public class AceEditor implements DocDisplay,
       
       JsArray<ChunkDefinition> chunks = JsArray.createArray().cast();
       JsArray<LineWidget> lineWidgets = getLineWidgets();
+      ScopeList scopes = new ScopeList(this);
       for (int i = 0; i<lineWidgets.length(); i++)
       {
          LineWidget lineWidget = lineWidgets.get(i);
          if (lineWidget.getType().equals(ChunkDefinition.LINE_WIDGET_TYPE))
          {
             ChunkDefinition chunk = lineWidget.getData();
-            chunks.push(chunk.withRow(lineWidget.getRow()));
+            chunks.push(chunk.with(lineWidget.getRow(), 
+                  TextEditingTargetNotebook.getKnitrChunkLabel(
+                        lineWidget.getRow(), this, scopes)));
          }
       }
       

@@ -86,10 +86,21 @@ public class EditingTargetCodeExecution
       boolean noSelection = selectionRange.isEmpty();
       if (noSelection)
       {
-         int row = docDisplay_.getSelectionStart().getRow();
-         selectionRange = Range.fromPoints(
-               Position.create(row, 0),
-               Position.create(row, docDisplay_.getLength(row)));
+         Scope scope = docDisplay_.getCurrentChunk();
+         if (scope == null)
+         {
+            int row = docDisplay_.getSelectionStart().getRow();
+            selectionRange = Range.fromPoints(
+                  Position.create(row, 0),
+                  Position.create(row, docDisplay_.getLength(row)));
+         }
+         else
+         {
+            selectionRange = docDisplay_.getMultiLineExpr(
+                  docDisplay_.getCursorPosition(), 
+                  scope.getBodyStart().getRow(), 
+                  scope.getEnd().getRow() - 1);
+         }
          
          // make it harder to step off the end of a chunk
          InsertChunkInfo insert = docDisplay_.getInsertChunkInfo();
@@ -112,6 +123,8 @@ public class EditingTargetCodeExecution
       // advance if there is no current selection
       if (noSelection && moveCursorAfter)
       {
+         docDisplay_.setCursorPosition(Position.create(
+               selectionRange.getEnd().getRow(), 0));
          if (!docDisplay_.moveSelectionToNextLine(true))
             docDisplay_.moveSelectionToBlankLine();
          docDisplay_.scrollCursorIntoViewIfNecessary(3);
@@ -185,7 +198,7 @@ public class EditingTargetCodeExecution
          if (scope != null)
          {
             events_.fireEvent(new SendToChunkConsoleEvent(docId_, 
-                  scope, code));
+                  scope, range));
             return;
          }
       }
@@ -209,7 +222,24 @@ public class EditingTargetCodeExecution
          String code = lastExecutedCode_.getValue();
          if (code != null && code.trim().length() > 0)
          {
-            events_.fireEvent(new SendToConsoleEvent(code, true));
+            // if in notebook mode, we want to execute the code inside the 
+            // chunk rather than at the console
+            Scope scope = null;
+            if (docDisplay_.showChunkOutputInline())
+            {
+               scope = docDisplay_.getCurrentChunk(
+                  lastExecutedCode_.getRange().getStart());
+            }
+
+            if (scope == null)
+            {
+               events_.fireEvent(new SendToConsoleEvent(code, true));
+            }
+            else
+            {
+               events_.fireEvent(new SendToChunkConsoleEvent(docId_, 
+                     scope, lastExecutedCode_.getRange()));
+            }
          }
       }
    }

@@ -24,6 +24,7 @@ import org.rstudio.studio.client.workbench.views.source.editors.text.PinnedLineW
 import org.rstudio.studio.client.workbench.views.source.editors.text.Scope;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ace.LineWidget;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ace.Position;
+import org.rstudio.studio.client.workbench.views.source.editors.text.ace.Range;
 import org.rstudio.studio.client.workbench.views.source.editors.text.events.RenderFinishedEvent;
 import org.rstudio.studio.client.workbench.views.source.events.ChunkChangeEvent;
 
@@ -40,13 +41,28 @@ public class ChunkOutputUi
    public ChunkOutputUi(String docId, DocDisplay display, ChunkDefinition def,
           PinnedLineWidget.Host lineWidgetHost)
    {
+      this(docId, display, def, lineWidgetHost, null);
+   }
+
+   public ChunkOutputUi(String docId, DocDisplay display, ChunkDefinition def,
+          PinnedLineWidget.Host lineWidgetHost, ChunkOutputWidget widget)
+   {
       display_ = display;
       chunkId_ = def.getChunkId();
       docId_ = docId;
       def_ = def;
+      boolean hasOutput = widget != null;
+      if (widget == null) 
+      {
+         widget = new ChunkOutputWidget(def.getChunkId(), def.getOptions(), 
+                                        def.getExpansionState(), this);
+      }
+      else
+      {
+         widget.setHost(this);
+      }
 
-      outputWidget_ = new ChunkOutputWidget(def.getChunkId(), 
-            def_.getOptions(), def.getExpansionState(), this);
+      outputWidget_ = widget;
       
       // sync the widget's expanded/collapsed state to the underlying chunk
       // definition (which is persisted)
@@ -63,9 +79,13 @@ public class ChunkOutputUi
       Element ele = outputWidget_.getElement();
       ele.addClassName(ThemeStyles.INSTANCE.selectableText());
       
-      // make the widget initially invisible (until it gets some output)
-      ele.getStyle().setHeight(0, Unit.PX);
-      outputWidget_.setVisible(false);
+      // if we didn't start with output, make the widget initially invisible
+      // (until it gets some output)
+      if (!hasOutput)
+      {
+         ele.getStyle().setHeight(0, Unit.PX);
+         outputWidget_.setVisible(false);
+      }
       
       lineWidget_ = new PinnedLineWidget(ChunkDefinition.LINE_WIDGET_TYPE, 
             display_, outputWidget_, def.getRow(), def, lineWidgetHost);
@@ -121,6 +141,7 @@ public class ChunkOutputUi
       // widget if we haven't already, so it's important that remove() can't
       // be reentrant.
       lineWidget_.detach();
+      lineWidget_.getLineWidget().getElement().removeFromParent();
    }
    
    public boolean moving()
@@ -133,13 +154,13 @@ public class ChunkOutputUi
       // we want to be sure the user can see the row beneath the output 
       // (this is just a convenient way to determine whether the entire 
       // output is visible)
-      int targetRow = getCurrentRow() + 1;
+      int targetRow = Math.min(display_.getRowCount() - 1, getCurrentRow() + 1);
       
       // if the chunk has no visible output yet, just make sure it's not too
       // close to the bottom of the screen
       if (!outputWidget_.isVisible())
       {
-         targetRow = Math.min(display_.getRowCount(), targetRow + 1);
+         targetRow = Math.min(display_.getRowCount() - 1, targetRow + 1);
       }
       
       // if the chunk and output are already taking up the whole viewport, don't
@@ -168,6 +189,17 @@ public class ChunkOutputUi
    @Override
    public void onOutputHeightChanged(int outputHeight, boolean ensureVisible)
    {
+      // if ensuring visible, also ensure that the associated code is unfolded
+      if (ensureVisible)
+      {
+         Scope scope = getScope();
+         if (scope != null)
+         {
+            display_.unfold(Range.fromPoints(scope.getPreamble(), 
+                                             scope.getEnd()));
+         }
+      }
+
       int height = 
             outputWidget_.getExpansionState() == ChunkOutputWidget.COLLAPSED ?
                CHUNK_COLLAPSED_HEIGHT :
@@ -222,4 +254,9 @@ public class ChunkOutputUi
    public final static int MIN_CHUNK_HEIGHT = 25;
    public final static int CHUNK_COLLAPSED_HEIGHT = 15;
    public final static int MAX_CHUNK_HEIGHT = 650;
+   
+   public final static int MAX_PLOT_WIDTH = 650;
+   public final static int MAX_HTMLWIDGET_WIDTH = 800;
+   
+   public final static double OUTPUT_ASPECT = 1.618;
 }

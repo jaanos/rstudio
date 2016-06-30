@@ -46,16 +46,6 @@ SEXP rs_recordHtmlWidget(SEXP htmlFileSEXP, SEXP depFileSEXP)
    return R_NilValue;
 }
 
-void onConsolePrompt(const std::string&)
-{
-   // stop capturing HTML widgets when the prompt returns
-   Error error = r::exec::RFunction(".rs.releaseHtmlCapture").call();
-   if (error)
-      LOG_ERROR(error);
-
-   module_context::events().onConsolePrompt.disconnect(onConsolePrompt);
-}
-
 bool moveLibFile(const FilePath& from, const FilePath& to, 
       const FilePath& path)
 {
@@ -73,20 +63,34 @@ bool moveLibFile(const FilePath& from, const FilePath& to,
 
 } // anonymous namespace
 
-core::Error beginWidgetCapture(
-              const core::FilePath& outputFolder,
-              const core::FilePath& libraryFolder)
+// provide default constructor/destructor
+HtmlCapture::HtmlCapture()
 {
-   Error error = r::exec::RFunction(".rs.initHtmlCapture", 
-         outputFolder.absolutePath(),
-         outputFolder.complete(kChunkLibDir).absolutePath()).call();
+}
+
+HtmlCapture::~HtmlCapture()
+{
+}
+
+void HtmlCapture::disconnect()
+{
+   // stop capturing HTML widgets when the prompt returns
+   Error error = r::exec::RFunction(".rs.releaseHtmlCapture").call();
    if (error)
-      return error;
+      LOG_ERROR(error);
+   
+   NotebookCapture::disconnect();
+}
 
-
-   module_context::events().onConsolePrompt.connect(onConsolePrompt);
-
-   return Success();
+core::Error HtmlCapture::connectHtmlCapture(
+              const core::FilePath& outputFolder,
+              const core::FilePath& libraryFolder,
+              const json::Object& chunkOptions)
+{
+   return r::exec::RFunction(".rs.initHtmlCapture", 
+         outputFolder.absolutePath(),
+         outputFolder.complete(kChunkLibDir).absolutePath(),
+         chunkOptions).call();
 }
 
 core::Error initHtmlWidgets()

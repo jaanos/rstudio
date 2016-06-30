@@ -15,6 +15,7 @@
 package org.rstudio.studio.client.rmarkdown.model;
 
 import org.rstudio.core.client.files.FileSystemItem;
+import org.rstudio.core.client.js.JsObject;
 import org.rstudio.studio.client.common.crypto.CryptoServerOperations;
 import org.rstudio.studio.client.server.ServerRequestCallback;
 import org.rstudio.studio.client.server.Void;
@@ -65,19 +66,40 @@ public interface RMarkdownServerOperations extends CryptoServerOperations
    public String getFileUrl(FileSystemItem file);
    
    void prepareForRmdChunkExecution(String id,
-                                    ServerRequestCallback<Void> requestCallback);
+                ServerRequestCallback<RmdExecutionState> requestCallback);
 
    void getRmdOutputInfo(String target,
                 ServerRequestCallback<RmdOutputInfo> resultCallback);
    
    void refreshChunkOutput(String docPath, String docId, String contextId,
                            String requestId, 
-                           ServerRequestCallback<Void> requestCallback);
+                           ServerRequestCallback<NotebookDocQueue> requestCallback);
    
-   void setChunkConsole(String docId, String chunkId, int execMode,
-                        String options, int pixelWidth, int characterWidth, 
-                        boolean replace,
+   void setChunkConsole(String docId, String chunkId, int commitMode, 
+                        int execMode, int execScope, String options, 
+                        int pixelWidth, int characterWidth, 
                         ServerRequestCallback<RmdChunkOptions> requestCallback);
    
    void createNotebookFromCache(String rmdPath, String outputPath, ServerRequestCallback<Void> requestCallback);
+   
+   void replayNotebookPlots(String docId, String initialChunkId, int pixelWidth, 
+         ServerRequestCallback<Boolean> requestCallback);
+   
+   void executeNotebookChunks(NotebookDocQueue queue, 
+         ServerRequestCallback<Void> requestCallback);
+   
+   void updateNotebookExecQueue(NotebookQueueUnit unit, int op, 
+         String beforeChunkId, ServerRequestCallback<Void> requestCallback);
+   
+   void executeAlternateEngineChunk(String docId,
+                                    String chunkId,
+                                    int commitMode,
+                                    String engine,
+                                    String code,
+                                    JsObject options,
+                                    ServerRequestCallback<String> requestCallback);
+   
+   void interruptChunk(String docId,
+                       String chunkId,
+                       ServerRequestCallback<Void> requestCallback);
 }

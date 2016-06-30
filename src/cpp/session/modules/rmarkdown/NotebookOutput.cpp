@@ -16,12 +16,14 @@
 #include "SessionRmdNotebook.hpp"
 #include "NotebookCache.hpp"
 #include "NotebookOutput.hpp"
+#include "NotebookPlots.hpp"
 
 #include <boost/foreach.hpp>
 #include <boost/format.hpp>
 #include <boost/algorithm/string.hpp>
 
 #include <core/Algorithm.hpp>
+#include <core/Base64.hpp>
 #include <core/Exec.hpp>
 #include <core/FilePath.hpp>
 #include <core/FileSerializer.hpp>
@@ -37,7 +39,6 @@
 
 #include <map>
 
-#define kChunkOutputPath   "chunk_output"
 #define kChunkOutputType   "output_type"
 #define kChunkOutputValue  "output_val"
 #define kChunkOutputs      "chunk_outputs"
@@ -153,13 +154,70 @@ Error fillOutputObject(const std::string& docId, const std::string& chunkId,
    else if (outputType == kChunkOutputPlot || outputType == kChunkOutputHtml)
    {
       // plot/HTML outputs should be requested by the client, so pass the path
-      (*pObj)[kChunkOutputValue] = kChunkOutputPath "/" + nbCtxId + "/" + 
-                                   docId + "/" + chunkId + "/" + 
-                                   path.filename();
+      std::string url(kChunkOutputPath "/" + nbCtxId + "/" + 
+                         docId + "/" + chunkId + "/" + 
+                         path.filename());
+
+      // if this is a plot and it doesn't have a display list, hint to client
+      // that plot can't be resized
+      if (outputType == kChunkOutputPlot && path.hasExtensionLowerCase(".png"))
+      {
+         // form the path to where we'd expect the snapshot to be
+         FilePath snapshotPath = path.parent().complete(
+               path.stem() + kDisplayListExt);
+         if (!snapshotPath.exists())
+            url.append("?fixed_size=1");
+      }
+
+      (*pObj)[kChunkOutputValue] = url;
    }
 
    return Success();
 }
+
+#define kReHtmlWidgetContainerBegin     "<!-- htmlwidget-container-begin -->"
+#define kReHtmlWidgetContainerEnd       "<!-- htmlwidget-container-end -->"
+#define kReHtmlWidgetSizingPolicyBase64 "<!-- htmlwidget-sizing-policy-base64 (\\S+) -->"
+
+class HtmlWidgetFilter : public boost::iostreams::regex_filter
+{
+public:
+   HtmlWidgetFilter()
+      : boost::iostreams::regex_filter(
+           boost::regex(
+              kReHtmlWidgetContainerBegin "|"
+              kReHtmlWidgetContainerEnd "|"
+              kReHtmlWidgetSizingPolicyBase64
+           ),
+           boost::bind(&HtmlWidgetFilter::substitute, this, _1))
+   {
+   }
+   
+private:
+   std::string substitute(const boost::cmatch& match)
+   {
+      // be paranoid
+      std::size_t n = match.size();
+      if (n < 1)
+         return std::string();
+      
+      std::string matchString = match.str();
+      if (matchString == kReHtmlWidgetContainerBegin)
+         return "<div id=\"htmlwidget_container\">";
+      else if (matchString == kReHtmlWidgetContainerEnd)
+         return "</div>";
+      
+      if (n < 2)
+         return match[1].str();
+      
+      // decode htmlwidget sizing information
+      std::string decoded;
+      Error error = base64::decode(match[1].first, match[1].length(), &decoded);
+      if (error)
+         LOG_ERROR(error);
+      return decoded;
+   }
+};
 
 Error handleChunkOutputRequest(const http::Request& request,
                                http::Response* pResponse)
@@ -208,12 +266,12 @@ Error handleChunkOutputRequest(const http::Request& request,
    {
       // in server mode, or if a reference to the chunk library folder, we can
       // reuse the contents (let the browser cache the file)
-      pResponse->setCacheableFile(target, request);
+      pResponse->setCacheableFile(target, request, HtmlWidgetFilter());
    }
    else
    {
       // no cache necessary in desktop mode
-      pResponse->setFile(target, request);
+      pResponse->setFile(target, request, HtmlWidgetFilter());
    }
 
    return Success();
@@ -231,7 +289,8 @@ void updateLastChunkOutput(const std::string& docId,
 
 // given a document ID and a chunk ID, discover the last output the chunk had
 OutputPair lastChunkOutput(const std::string& docId, 
-                           const std::string& chunkId)
+                           const std::string& chunkId,
+                           const std::string& nbCtxId)
 {
    // check our cache 
    LastChunkOutput::iterator it = s_lastChunkOutputs.find(docId + chunkId);
@@ -240,10 +299,7 @@ OutputPair lastChunkOutput(const std::string& docId,
       return it->second;
    }
    
-   std::string docPath;
-   source_database::getPath(docId, &docPath);
-   FilePath outputPath = chunkOutputPath(docPath, docId, chunkId, 
-         notebookCtxId());
+   FilePath outputPath = chunkOutputPath(docId, chunkId, nbCtxId, ContextExact);
 
    // scan the directory for output
    std::vector<FilePath> outputPaths;
@@ -275,25 +331,40 @@ OutputPair lastChunkOutput(const std::string& docId,
 
 FilePath chunkOutputPath(
       const std::string& docPath, const std::string& docId,
-      const std::string& chunkId, const std::string& nbCtxId)
-
+      const std::string& chunkId, const std::string& nbCtxId, 
+      ChunkOutputContext ctxType)
 {
-   return chunkCacheFolder(docPath, docId, nbCtxId).childPath(chunkId);
+   // compute path to exact context
+   FilePath path = chunkCacheFolder(docPath, docId, nbCtxId).childPath(chunkId);
+
+   // fall back to saved context if permitted
+   if (!path.exists() && ctxType == ContextSaved)
+      path = chunkCacheFolder(docPath, docId, kSavedCtx).childPath(chunkId);
+
+   return path;
 }
 
-FilePath chunkOutputPath(const std::string& docId, const std::string& chunkId)
+FilePath chunkOutputPath(const std::string& docId, const std::string& chunkId,
+      const std::string& nbCtxId, ChunkOutputContext ctxType)
 {
    std::string docPath;
    source_database::getPath(docId, &docPath);
 
-   return chunkOutputPath(docPath, docId, chunkId, notebookCtxId());
+   return chunkOutputPath(docPath, docId, chunkId, nbCtxId, ctxType);
+}
+
+FilePath chunkOutputPath(const std::string& docId, const std::string& chunkId,
+      ChunkOutputContext ctxType)
+{
+   return chunkOutputPath(docId, chunkId, notebookCtxId(), ctxType);
 }
 
 FilePath chunkOutputFile(const std::string& docId, 
                          const std::string& chunkId, 
+                         const std::string& nbCtxId,
                          const OutputPair& output)
 {
-   return chunkOutputPath(docId, chunkId).complete(
+   return chunkOutputPath(docId, chunkId, nbCtxId, ContextExact).complete(
          (boost::format("%|1$06x|%2%") 
                      % (output.ordinal % MAX_ORDINAL)
                      % chunkOutputExt(output.outputType)).str());
@@ -301,15 +372,16 @@ FilePath chunkOutputFile(const std::string& docId,
 
 FilePath chunkOutputFile(const std::string& docId, 
                          const std::string& chunkId, 
+                         const std::string& nbCtxId, 
                          unsigned outputType)
 {
-   OutputPair output = lastChunkOutput(docId, chunkId);
+   OutputPair output = lastChunkOutput(docId, chunkId, nbCtxId);
    if (output.outputType == outputType)
-      return chunkOutputFile(docId, chunkId, output);
+      return chunkOutputFile(docId, chunkId, nbCtxId, output);
    output.ordinal++;
    output.outputType = outputType;
    updateLastChunkOutput(docId, chunkId, output);
-   return chunkOutputFile(docId, chunkId, output);
+   return chunkOutputFile(docId, chunkId, nbCtxId, output);
 }
 
 void enqueueChunkOutput(const std::string& docId,
@@ -339,46 +411,44 @@ Error enqueueChunkOutput(
       const std::string& chunkId, const std::string& nbCtxId,
       const std::string& requestId)
 {
-   std::string ctxId(nbCtxId);
-   FilePath outputPath = chunkOutputPath(docPath, docId, chunkId, nbCtxId);
+   FilePath outputPath = chunkOutputPath(docPath, docId, chunkId, nbCtxId,
+         ContextSaved);
 
-   // if the contextual output path doesn't exist, try the saved context
-   if (!outputPath.exists())
-   {
-      ctxId = kSavedCtx;
-      outputPath = chunkOutputPath(docPath, docId, chunkId, kSavedCtx);
-   }
-
-   // scan the directory for output
+   std::string ctxId(outputPath.parent().filename());
    std::vector<FilePath> outputPaths;
-   Error error = outputPath.children(&outputPaths);
-
-   // non-fatal: if we can't list we'll safely return an empty array
-   if (error) 
-      LOG_ERROR(error);
-
-   // arrange by filename (use FilePath's < operator)
-   std::sort(outputPaths.begin(), outputPaths.end());
-
-   // loop through each and build an array of the outputs
    json::Array outputs;
-   BOOST_FOREACH(const FilePath& outputPath, outputPaths)
+
+   // if there's an output directory at the expected location (there may not be
+   // for chunks which don't have any output at all), read it into a JSON
+   // object for the client
+   if (outputPath.exists())
    {
-      json::Object output;
-
-      // ascertain chunk output type from file extension; skip if extension 
-      // unknown
-      int outputType = chunkOutputType(outputPath);
-      if (outputType == kChunkOutputNone)
-         continue;
-
-      // format/parse chunk output for client consumption
-      Error error = fillOutputObject(docId, chunkId, ctxId, outputType, 
-            outputPath, &output);
-      if (error)
+      Error error = outputPath.children(&outputPaths);
+      if (error) 
          LOG_ERROR(error);
-      else
-         outputs.push_back(output);
+
+      // arrange by filename (use FilePath's < operator)
+      std::sort(outputPaths.begin(), outputPaths.end());
+
+      // loop through each and build an array of the outputs
+      BOOST_FOREACH(const FilePath& outputPath, outputPaths)
+      {
+         json::Object output;
+
+         // ascertain chunk output type from file extension; skip if extension 
+         // unknown
+         int outputType = chunkOutputType(outputPath);
+         if (outputType == kChunkOutputNone)
+            continue;
+
+         // format/parse chunk output for client consumption
+         error = fillOutputObject(docId, chunkId, ctxId, outputType, 
+               outputPath, &output);
+         if (error)
+            LOG_ERROR(error);
+         else
+            outputs.push_back(output);
+      }
    }
    
    // note that if we find that this chunk has no output we can display, we
@@ -396,14 +466,15 @@ Error enqueueChunkOutput(
 }
 
 core::Error cleanChunkOutput(const std::string& docId,
-      const std::string& chunkId, bool preserveFolder)
+      const std::string& chunkId, const std::string& nbCtxId, 
+      bool preserveFolder)
 {
-   FilePath outputPath = chunkOutputPath(docId, chunkId);
+   FilePath outputPath = chunkOutputPath(docId, chunkId, nbCtxId, ContextExact);
    if (!outputPath.exists())
       return Success();
 
    // reset counter if we're getting close to the end of our range (rare)
-   OutputPair pair = lastChunkOutput(docId, chunkId);
+   OutputPair pair = lastChunkOutput(docId, chunkId, nbCtxId);
    if ((MAX_ORDINAL - pair.ordinal) < OUTPUT_THRESHOLD)
    {
       updateLastChunkOutput(docId, chunkId, OutputPair());
@@ -419,6 +490,23 @@ core::Error cleanChunkOutput(const std::string& docId,
          return error;
    }
    return Success();
+}
+
+core::Error appendConsoleOutput(int chunkConsoleType,
+                                const std::string& output,
+                                const core::FilePath& targetPath)
+{
+   std::vector<std::string> data;
+   data.push_back(safe_convert::numberToString(chunkConsoleType));
+   data.push_back(output);
+   
+   std::string encoded = text::encodeCsvLine(data) + "\n";
+   Error error = writeStringToFile(
+            targetPath,
+            encoded,
+            string_utils::LineEndingPassthrough,
+            false);
+   return error;
 }
 
 Error initOutput()

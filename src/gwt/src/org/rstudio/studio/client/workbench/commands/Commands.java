@@ -116,6 +116,8 @@ public abstract class
    public abstract AppCommand shrinkSelection();
    public abstract AppCommand goToNextSection();
    public abstract AppCommand goToPrevSection();
+   public abstract AppCommand goToNextChunk();
+   public abstract AppCommand goToPrevChunk();
    public abstract AppCommand goToStartOfCurrentScope();
    public abstract AppCommand goToEndOfCurrentScope();
    public abstract AppCommand expandRaggedSelection();
@@ -135,6 +137,7 @@ public abstract class
    public abstract AppCommand renameInScope();
    public abstract AppCommand insertRoxygenSkeleton();
    public abstract AppCommand insertSnippet();
+   public abstract AppCommand yankRegion();
    public abstract AppCommand yankBeforeCursor();
    public abstract AppCommand yankAfterCursor();
    public abstract AppCommand pasteLastYank();
@@ -270,6 +273,10 @@ public abstract class
    public abstract AppCommand activateHistory();
    public abstract AppCommand layoutZoomHistory();
 
+   // Connections
+   public abstract AppCommand activateConnections();
+   public abstract AppCommand layoutZoomConnections();
+   
    // Workspace
    public abstract AppCommand clearWorkspace();
    public abstract AppCommand refreshWorkspace();
@@ -408,6 +415,15 @@ public abstract class
    public abstract AppCommand buildToolsProjectSetup();
    public abstract AppCommand activateBuild();
    public abstract AppCommand layoutZoomBuild();
+   
+   // Connections
+   public abstract AppCommand newConnection();
+   public abstract AppCommand removeConnection();
+   public abstract AppCommand disconnectConnection();
+   public abstract AppCommand refreshConnection();
+   public abstract AppCommand sparkLog();
+   public abstract AppCommand sparkUI();
+   public abstract AppCommand sparkHelp();
    
    // Clipboard placeholders
    public abstract AppCommand undoDummy();

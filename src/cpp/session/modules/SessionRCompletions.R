@@ -1055,7 +1055,7 @@ assign(x = ".rs.acCompletionTypes",
       {
          # Check to see if an overloaded .DollarNames method has been provided,
          # and use that to resolve names if possible.
-         dollarNamesMethod <- .rs.getDollarNamesMethod(object, TRUE)
+         dollarNamesMethod <- .rs.getDollarNamesMethod(object, TRUE, envir = envir)
          if (is.function(dollarNamesMethod))
          {
             allNames <- dollarNamesMethod(object)
@@ -1099,6 +1099,13 @@ assign(x = ".rs.acCompletionTypes",
          # object is able to supply names through the `names` method, then
          # those names are also valid for `$` completions.)
          else if (isS4(object) && length(names(object)))
+         {
+            allNames <- .rs.getNames(object)
+         }
+         
+         # Environments (note that some S4 objects 'are' environments;
+         # e.g. 'hash' objects from the 'hash' package)
+         else if (is.environment(object))
          {
             allNames <- .rs.getNames(object)
          }
@@ -2390,6 +2397,9 @@ assign(x = ".rs.acCompletionTypes",
 
 .rs.addFunction("readAliases", function(path)
 {
+   if (!length(path))
+      return(character())
+
    if (file.exists(f <- file.path(path, "help", "aliases.rds")))
       names(readRDS(f))
    else
@@ -2629,13 +2639,13 @@ assign(x = ".rs.acCompletionTypes",
       if (nzchar(firstArgName))
       {
          functionArgs <- shinyFunctions[[functionName]]
-         if ("outputId" %in% functionArgs)
+         if ("outputId" %in% functionArgs || .rs.endsWith(functionName, "Output"))
          {
             outputCount$count <- outputCount$count + 1
             outputs[[as.character(outputCount$count)]] <- firstArgName
          }
          
-         else if ("inputId" %in% functionArgs)
+         else if ("inputId" %in% functionArgs || .rs.endsWith(functionName, "Input"))
          {
             inputCount$count <- inputCount$count + 1
             inputs[[as.character(inputCount$count)]] <- firstArgName

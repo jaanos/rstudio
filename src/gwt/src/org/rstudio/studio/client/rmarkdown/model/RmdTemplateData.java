@@ -24,6 +24,15 @@ public class RmdTemplateData
          template_name: "Document", 
          template_formats: [ 
             {
+            format_name: "html_notebook",
+            format_ui_name: "Notebook",
+            format_extension: ".nb.html", 
+            format_options: [ "toc", "toc_depth", "code_folding", "highlight", 
+                              "theme", "css", "fig_width", "fig_height", 
+                              "fig_caption", "number_sections", "smart" ],
+            format_notes: ""
+            },
+            {
             format_name: "html_document",
             format_ui_name: "HTML",
             format_extension: "html",
@@ -48,7 +57,7 @@ public class RmdTemplateData
             format_options: [ "toc", "toc_depth", "highlight", "fig_width", "fig_height", 
                               "fig_caption", "keep_md" ],
             format_notes: "Previewing Word documents requires an installation of MS Word (or Libre/Open Office on Linux)."
-            }         
+            },
          ],
          template_options: [ 
             {
@@ -188,6 +197,13 @@ public class RmdTemplateData
             option_type: "file", 
             option_nullable: true,
             option_default: "null"
+            },
+            {
+            option_name: "code_folding",
+            option_ui_name: "Fold R code chunks", 
+            option_type: "choice", 
+            option_default: "show",
+            option_list: [ "none", "hide", "show" ]
             },
          ]
          },
@@ -421,24 +437,10 @@ public class RmdTemplateData
             option_default: "null"
             },
          ]
-         },
-         {
-         template_name: "Notebook", 
-         template_formats: [ 
-            {
-            format_name: "html_notebook",
-            format_ui_name: "Notebook",
-            format_extension: "html",
-            format_options: [],
-            format_notes: ""
-            } 
-         ],
-         template_options: [ ]
          }
-   ];
+      ];
    }-*/;
    
    public final static String DOCUMENT_TEMPLATE = "Document";
    public final static String PRESENTATION_TEMPLATE = "Presentation";
-   public final static String NOTEBOOK_TEMPLATE = "Notebook";
 }

@@ -61,6 +61,10 @@ import org.rstudio.studio.client.projects.events.ProjectAccessRevokedEvent;
 import org.rstudio.studio.client.projects.events.ProjectUserChangedEvent;
 import org.rstudio.studio.client.projects.model.OpenProjectError;
 import org.rstudio.studio.client.projects.model.ProjectUser;
+import org.rstudio.studio.client.rmarkdown.events.ChunkExecStateChangedEvent;
+import org.rstudio.studio.client.rmarkdown.events.ChunkPlotRefreshFinishedEvent;
+import org.rstudio.studio.client.rmarkdown.events.ChunkPlotRefreshedEvent;
+import org.rstudio.studio.client.rmarkdown.events.NotebookRangeExecutedEvent;
 import org.rstudio.studio.client.rmarkdown.events.PreviewRmdEvent;
 import org.rstudio.studio.client.rmarkdown.events.ShinyGadgetDialogEvent;
 import org.rstudio.studio.client.rmarkdown.events.RmdChunkOutputEvent;
@@ -96,6 +100,13 @@ import org.rstudio.studio.client.workbench.views.buildtools.events.BuildErrorsEv
 import org.rstudio.studio.client.workbench.views.buildtools.events.BuildOutputEvent;
 import org.rstudio.studio.client.workbench.views.buildtools.events.BuildStartedEvent;
 import org.rstudio.studio.client.workbench.views.choosefile.events.ChooseFileEvent;
+import org.rstudio.studio.client.workbench.views.connections.events.ActiveConnectionsChangedEvent;
+import org.rstudio.studio.client.workbench.views.connections.events.ConnectionListChangedEvent;
+import org.rstudio.studio.client.workbench.views.connections.events.ConnectionOpenedEvent;
+import org.rstudio.studio.client.workbench.views.connections.events.ConnectionUpdatedEvent;
+import org.rstudio.studio.client.workbench.views.connections.events.EnableConnectionsEvent;
+import org.rstudio.studio.client.workbench.views.connections.model.Connection;
+import org.rstudio.studio.client.workbench.views.connections.model.ConnectionId;
 import org.rstudio.studio.client.workbench.views.console.events.*;
 import org.rstudio.studio.client.workbench.views.console.model.ConsolePrompt;
 import org.rstudio.studio.client.workbench.views.console.model.ConsoleResetHistory;
@@ -786,6 +797,54 @@ public class ClientEventDispatcher
          {
             FileSystemItem fsi = event.getData();
             eventBus_.fireEvent(new WebsiteFileSavedEvent(fsi));
+         }
+         else if (type.equals(ClientEvent.ChunkPlotRefreshed))
+         {
+            ChunkPlotRefreshedEvent.Data data = event.getData();
+            eventBus_.fireEvent(new ChunkPlotRefreshedEvent(data));
+         }
+         else if (type.equals(ClientEvent.ChunkPlotRefreshFinished))
+         {
+            ChunkPlotRefreshFinishedEvent.Data data = event.getData();
+            eventBus_.fireEvent(new ChunkPlotRefreshFinishedEvent(data));
+         }
+         else if (type.equals(ClientEvent.ReloadWithLastChanceSave))
+         {
+            eventBus_.fireEvent(new ReloadWithLastChanceSaveEvent());
+         }
+         else if (type.equals(ClientEvent.ConnectionUpdated))
+         {
+            ConnectionUpdatedEvent.Data data = event.getData();
+            eventBus_.fireEvent(new ConnectionUpdatedEvent(data));
+         }
+         else if (type.equals(ClientEvent.EnableConnections))
+         {
+            eventBus_.fireEvent(new EnableConnectionsEvent());
+         }
+         else if (type.equals(ClientEvent.ConnectionListChanged))
+         {
+            JsArray<Connection> connections = event.getData();
+            eventBus_.fireEvent(new ConnectionListChangedEvent(connections));
+         }
+         else if (type.equals(ClientEvent.ActiveConnectionsChanged))
+         {
+            JsArray<ConnectionId> connections = event.getData();
+            eventBus_.fireEvent(new ActiveConnectionsChangedEvent(connections));
+         }
+         else if (type.equals(ClientEvent.ConnectionOpened))
+         {
+            Connection connection = event.getData();
+            eventBus_.fireEvent(new ConnectionOpenedEvent(connection));
+         }
+         else if (type.equals(ClientEvent.NotebookRangeExecuted))
+         {
+            NotebookRangeExecutedEvent.Data data = event.getData();
+            eventBus_.fireEvent(new NotebookRangeExecutedEvent(data));
+         }
+         else if (type.equals(ClientEvent.ChunkExecStateChanged))
+         {
+            ChunkExecStateChangedEvent.Data data = event.getData();
+            eventBus_.fireEvent(new ChunkExecStateChangedEvent(data));
          }
          else
          {

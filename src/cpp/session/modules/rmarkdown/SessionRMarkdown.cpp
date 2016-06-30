@@ -14,6 +14,7 @@
  */
 
 #include "SessionRMarkdown.hpp"
+#include "SessionRmdNotebook.hpp"
 #include "../SessionHTMLPreview.hpp"
 #include "../build/SessionBuildErrors.hpp"
 
@@ -22,6 +23,7 @@
 #include <boost/iostreams/filter/regex.hpp>
 #include <boost/format.hpp>
 #include <boost/foreach.hpp>
+#include <boost/scope_exit.hpp>
 
 #include <core/FileSerializer.hpp>
 #include <core/Exec.hpp>
@@ -61,6 +63,12 @@ namespace rstudio {
 namespace session {
 
 namespace {
+
+enum 
+{
+   RExecutionReady = 0,
+   RExecutionBusy  = 1
+};
 
 std::string projectBuildDir()
 {
@@ -413,6 +421,9 @@ private:
          environment.push_back(std::make_pair("RMARKDOWN_PREVIEW_DIR", tempDir));
       else
          LOG_ERROR(error);
+
+      // set the not cran env var
+      environment.push_back(std::make_pair("NOT_CRAN", "true"));
 
       // render unless we were handed an existing output file
       allOutput_.clear();
@@ -943,7 +954,7 @@ Error renderRmd(const json::JsonRpcRequest& request,
       // if this is a notebook, it's pre-rendered
       FilePath inputFile = module_context::resolveAliasedPath(file); 
       FilePath outputFile = inputFile.parent().complete(inputFile.stem() + 
-                                                        ".nb.html");
+                                                        kNotebookExt);
 
       // extract the output format
       json::Object outputFormat;
@@ -1185,7 +1196,7 @@ Error getRmdTemplate(const json::JsonRpcRequest& request,
 
 
 Error prepareForRmdChunkExecution(const json::JsonRpcRequest& request,
-                                  json::JsonRpcResponse*)
+                                  json::JsonRpcResponse* pResponse)
 {
    // read id param
    std::string id;
@@ -1214,6 +1225,13 @@ Error prepareForRmdChunkExecution(const json::JsonRpcRequest& request,
          return error;
       }
    }
+
+   // indicate to the client whether R currently has executing code on the
+   // stack
+   json::Object result;
+   result["state"] = r::getGlobalContext()->nextcontext == NULL ?
+      RExecutionReady : RExecutionBusy;
+   pResponse->setResult(result);
 
    return Success();
 }
@@ -1303,9 +1321,6 @@ Error maybeCopyWebsiteAsset(const json::JsonRpcRequest& request,
 
    return Success();
 }
-
-
-
 
 SEXP rs_paramsFileForRmd(SEXP fileSEXP)
 {

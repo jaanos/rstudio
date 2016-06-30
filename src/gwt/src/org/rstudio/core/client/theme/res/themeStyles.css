@@ -918,12 +918,18 @@ body.avoid-move-cursor .gwt-SplitLayoutPanel-VDragger {
    background: TABBACKGROUND bottom repeat-x;
    height: TABSTRIPHEIGHT;
 }
+
+.secondaryToolbarPanel {
+  background: rgb(240,241,241);
+  border-bottom: 1px solid rgb(169,169,169);
+}
+
 .toolbarButtonRightImage {
    display: none;
 }
 .toolbarButtonMenu .toolbarButtonRightImage {
    display: inline;
-   margin: 4px 0 0 2px;
+   margin: 4px 0 0 5px;
 }
 .toolbarButtonMenuOnly {
    position: relative;
@@ -1469,5 +1475,11 @@ body.ubuntu_mono .searchBox {
 
 .borderedIFrame {
    border: 1px solid #BBB;    
+}
+
+.toolbarInfoLabel {
+   color: #606060;
+   top: -1px;
+   margin-right: 6px;
 }
 

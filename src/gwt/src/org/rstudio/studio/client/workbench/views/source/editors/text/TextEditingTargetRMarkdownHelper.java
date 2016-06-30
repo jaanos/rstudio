@@ -54,6 +54,7 @@ import org.rstudio.studio.client.rmarkdown.model.RMarkdownContext;
 import org.rstudio.studio.client.rmarkdown.model.RMarkdownServerOperations;
 import org.rstudio.studio.client.rmarkdown.model.RmdChosenTemplate;
 import org.rstudio.studio.client.rmarkdown.model.RmdCreatedTemplate;
+import org.rstudio.studio.client.rmarkdown.model.RmdExecutionState;
 import org.rstudio.studio.client.rmarkdown.model.RmdFrontMatter;
 import org.rstudio.studio.client.rmarkdown.model.RmdFrontMatterOutputOptions;
 import org.rstudio.studio.client.rmarkdown.model.RmdOutputFormat;
@@ -68,7 +69,6 @@ import org.rstudio.studio.client.rmarkdown.model.YamlTree;
 import org.rstudio.studio.client.server.ServerError;
 import org.rstudio.studio.client.server.ServerRequestCallback;
 import org.rstudio.studio.client.server.Void;
-import org.rstudio.studio.client.server.VoidServerRequestCallback;
 import org.rstudio.studio.client.workbench.WorkbenchContext;
 import org.rstudio.studio.client.workbench.model.Session;
 import org.rstudio.studio.client.workbench.prefs.model.UIPrefs;
@@ -330,12 +330,18 @@ public class TextEditingTargetRMarkdownHelper
       if (useRMarkdownV2(contents))
       {
          server_.prepareForRmdChunkExecution(id, 
-                                             new VoidServerRequestCallback() {
-            
+            new ServerRequestCallback<RmdExecutionState>() 
+         {
             @Override
-            protected void onCompleted()
+            public void onResponseReceived(RmdExecutionState state)
             {
                onExecuteChunk.execute();
+            }
+
+            @Override
+            public void onError(ServerError error)
+            {
+               Debug.logError(error);
             }
          });
       }
@@ -472,10 +478,11 @@ public class TextEditingTargetRMarkdownHelper
          if (tree.getKeyValue(RmdFrontMatter.KNIT_KEY).length() > 0)
             return null;
          
+         List<String> outFormats = getOutputFormats(tree);
+
          // Find the template appropriate to the first output format listed.
          // If no output format is present, assume HTML document (as the 
          // renderer does).
-         List<String> outFormats = getOutputFormats(tree);
          String outFormat = outFormats == null ? 
                RmdOutputFormat.OUTPUT_HTML_DOCUMENT :
                outFormats.get(0);

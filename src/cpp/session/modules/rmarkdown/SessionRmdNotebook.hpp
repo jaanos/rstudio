@@ -22,6 +22,7 @@
 #include <core/json/Json.hpp>
 
 #define kChunkLibDir "lib"
+#define kNotebookExt ".nb.html"
 
 namespace rstudio {
 namespace core {
@@ -35,6 +36,30 @@ namespace session {
 namespace modules {
 namespace rmarkdown {
 namespace notebook {
+
+enum ExecMode 
+{
+   // a single chunk is being executed interactively
+   ExecModeSingle = 0,
+   // multiple chunks are being executed in a batch
+   ExecModeBatch  = 1
+};
+
+enum ExecScope 
+{
+   // an entire chunk is being executed
+   ExecScopeChunk   = 0,
+   // a section of a chunk is being executed (e.g. via Ctrl+Enter)
+   ExecScopePartial = 1
+};
+
+enum CommitMode
+{
+   // changes should be committed to the cache immediately
+   ModeCommitted   = 0,
+   // changes should held for commit until save
+   ModeUncommitted = 1
+};
 
 core::Error initialize();
 
@@ -52,7 +77,7 @@ struct Events : boost::noncopyable
                 const std::string&)>
                 onChunkConsoleOutput;
 
-   boost::signal<void(const core::FilePath&)> onPlotOutput;
+   boost::signal<void(const core::FilePath&, const core::FilePath&)> onPlotOutput;
    boost::signal<void(const core::FilePath&, const core::FilePath&)> onHtmlOutput;
    boost::signal<void(const core::json::Object&)> onErrorOutput;
 };

@@ -1,7 +1,7 @@
 /*
- * SessionRnbParser.hpp
+ * SessionConnections.hpp
  *
- * Copyright (C) 2009-16 by RStudio, Inc.
+ * Copyright (C) 2009-12 by RStudio, Inc.
  *
  * Unless you have received this program directly from RStudio pursuant
  * to the terms of a commercial license agreement with RStudio, then
@@ -13,30 +13,39 @@
  *
  */
 
+#ifndef SESSION_CONNECTIONS_HPP
+#define SESSION_CONNECTIONS_HPP
 
-#ifndef SESSION_RMARKDOWN_RNB_PARSER_HPP
-#define SESSION_RMARKDOWN_RNB_PARSER_HPP
+#include <core/json/Json.hpp>
 
 namespace rstudio {
 namespace core {
    class Error;
-   class FilePath;
 }
 }
-
+ 
 namespace rstudio {
 namespace session {
-namespace modules {
-namespace rmarkdown {
-namespace notebook {
+namespace modules { 
+namespace connections {
+   
+// should connections be enabled?
+bool connectionsEnabled();
 
-core::Error parseRnb(const core::FilePath& rnbFile, 
-                     const core::FilePath& cacheFolder);
+// are we enabling them for the first time this session
+bool activateConnections();
 
-} // namespace notebook
-} // namespace rmarkdown
+core::json::Array connectionsAsJson();
+
+core::json::Array activeConnectionsAsJson();
+
+bool isSuspendable();
+
+core::Error initialize();
+                       
+} // namespace connections
 } // namespace modules
-} // namespace session
+} // namesapce session
 } // namespace rstudio
 
-#endif
+#endif // SESSION_CONNECTIONS_HPP

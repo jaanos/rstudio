@@ -21,8 +21,10 @@ import org.rstudio.studio.client.workbench.views.console.shell.assist.PopupPosit
 import org.rstudio.studio.client.workbench.views.source.editors.text.PinnedLineWidget;
 import org.rstudio.studio.client.workbench.views.source.editors.text.Scope;
 import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTarget;
+import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTargetScopeHelper;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ace.LineWidget;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ace.Position;
+import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.events.InterruptChunkEvent;
 
 import com.google.gwt.regexp.shared.RegExp;
 
@@ -33,6 +35,7 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
    {
       target_ = target;
       int preambleRow = chunk.getPreamble().getRow();
+      preambleRow_ = preambleRow;
       isSetup_ = isSetupChunk(preambleRow);
       isEval_ = isEvalChunk(preambleRow);
       host_ = lineWidgetHost;
@@ -95,7 +98,8 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
    @Override
    public void runPreviousChunks()
    {
-      target_.executePreviousChunks(chunkPosition());
+      target_.executeChunks(chunkPosition(), 
+            TextEditingTargetScopeHelper.PREVIOUS_CHUNKS);
       target_.focus();
    }
 
@@ -122,7 +126,7 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
    @Override
    public void interruptChunk()
    {
-      RStudioGinjector.INSTANCE.getApplicationInterrupt().interruptR(null);
+      target_.fireEvent(new InterruptChunkEvent(preambleRow_));
    }
 
    @Override
@@ -179,6 +183,7 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
 
    private final TextEditingTarget target_;
    private final PinnedLineWidget.Host host_;
+   private final int preambleRow_;
    private final boolean dark_;
 
    private ChunkContextToolbar toolbar_;

@@ -19,6 +19,8 @@
 
 #include <string>
 
+#define kChunkOutputPath   "chunk_output"
+
 #define kChunkOutputNone  0
 #define kChunkOutputText  1
 #define kChunkOutputPlot  2
@@ -44,6 +46,13 @@ namespace modules {
 namespace rmarkdown {
 namespace notebook {
 
+// forms for requesting the chunk output folder
+enum ChunkOutputContext
+{
+   ContextExact = 0,   // always use the requested context
+   ContextSaved        // fall back to saved context if exact doesn't exist
+};
+
 struct OutputPair
 {
    OutputPair() :
@@ -58,27 +67,41 @@ struct OutputPair
 
 // given a document ID and a chunk ID, discover the last output the chunk had
 OutputPair lastChunkOutput(const std::string& docId, 
-                           const std::string& chunkId);
+                           const std::string& chunkId,
+                           const std::string& nbCtxId);
 
 void updateLastChunkOutput(const std::string& docId, 
                            const std::string& chunkId,
                            const OutputPair& pair);
-// compute chunk output folder paths
+
+// compute chunk output folder paths for specific contexts
 core::FilePath chunkOutputPath(
       const std::string& docPath, const std::string& docId,
-      const std::string& chunkId, const std::string& nbCtxId);
+      const std::string& chunkId, const std::string& nbCtxId,
+      ChunkOutputContext ctxType);
 core::FilePath chunkOutputPath(const std::string& docId, 
-      const std::string& chunkId);
+      const std::string& chunkId, const std::string& nbCtxId, 
+      ChunkOutputContext ctxType);
+core::FilePath chunkOutputPath(const std::string& docId, 
+      const std::string& chunkId, ChunkOutputContext ctxType);
 
 // compute individual chunk output unit paths
 core::FilePath chunkOutputFile(const std::string& docId, 
-      const std::string& chunkId, const OutputPair& output);
+      const std::string& chunkId, const std::string& nbCtxId,
+      const OutputPair& output);
 
 core::FilePath chunkOutputFile(const std::string& docId, 
-      const std::string& chunkId, unsigned outputType);
+      const std::string& chunkId, const std::string& nbCtxId,
+      unsigned outputType);
 
 core::Error cleanChunkOutput(const std::string& docId, 
-      const std::string& chunkId, bool preserveFolder);
+      const std::string& chunkId, const std::string& nbCtxId, 
+      bool preserveFolder);
+
+// helper for emitting console data to file
+core::Error appendConsoleOutput(int chunkConsoleOutputType,
+                                const std::string& output,
+                                const core::FilePath& filePath);
 
 // send chunk output to client
 void enqueueChunkOutput(const std::string& docId,

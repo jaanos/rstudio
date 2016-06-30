@@ -16,6 +16,7 @@
 package org.rstudio.studio.client.common.dependencies;
 
 import java.util.ArrayList;
+import java.util.List;
 
 import org.rstudio.core.client.CommandWith2Args;
 import org.rstudio.core.client.CommandWithArg;
@@ -156,29 +157,30 @@ public class DependencyManager implements InstallShinyEvent.Handler
      );
    }
    
-   private ArrayList<Dependency> rmarkdownDependencies()
+   public static List<Dependency> rmarkdownDependencies()
    {
       ArrayList<Dependency> deps = new ArrayList<Dependency>();
-      deps.add(Dependency.cranPackage("evaluate", "0.7.2"));
+      deps.add(Dependency.cranPackage("evaluate", "0.8"));
       deps.add(Dependency.cranPackage("digest", "0.6"));
       deps.add(Dependency.cranPackage("formatR", "1.1"));
       deps.add(Dependency.cranPackage("highr", "0.3"));
       deps.add(Dependency.cranPackage("markdown", "0.7"));
       deps.add(Dependency.cranPackage("stringr", "0.6"));
       deps.add(Dependency.cranPackage("yaml", "2.1.5"));
+      deps.add(Dependency.cranPackage("Rcpp", "0.11.5"));
       deps.add(Dependency.cranPackage("htmltools", "0.2.4"));
       deps.add(Dependency.cranPackage("caTools", "1.14"));
       deps.add(Dependency.cranPackage("bitops", "1.0-6"));
-      deps.add(Dependency.cranPackage("knitr", "1.12", true));
+      deps.add(Dependency.cranPackage("knitr", "1.13", true));
       deps.add(Dependency.cranPackage("jsonlite", "0.9.19"));
       deps.add(Dependency.cranPackage("base64enc", "0.1-3"));
       deps.add(Dependency.embeddedPackage("rmarkdown"));
       return deps;
    }
    
-   private Dependency[] rmarkdownDependenciesArray()
+   public static Dependency[] rmarkdownDependenciesArray()
    {
-      ArrayList<Dependency> deps = rmarkdownDependencies();
+      List<Dependency> deps = rmarkdownDependencies();
       return deps.toArray(new Dependency[deps.size()]);
    }
  
@@ -265,6 +267,7 @@ public class DependencyManager implements InstallShinyEvent.Handler
          String htmltoolsVersion)
          {
       ArrayList<Dependency> deps = new ArrayList<Dependency>();
+      deps.add(Dependency.cranPackage("Rcpp", "0.11.5"));
       deps.add(Dependency.cranPackage("httpuv", "1.3.3"));
       deps.add(Dependency.cranPackage("mime", "0.3"));
       deps.add(Dependency.cranPackage("jsonlite", "0.9.19"));
@@ -339,7 +342,7 @@ public class DependencyManager implements InstallShinyEvent.Handler
    {
       ArrayList<Dependency> deps = new ArrayList<Dependency>();
       deps.add(Dependency.cranPackage("haven", "0.2.0"));
-      deps.add(Dependency.cranPackage("Rcpp", "0.11.4"));
+      deps.add(Dependency.cranPackage("Rcpp", "0.11.5"));
       return deps;
    }
    
@@ -555,7 +558,7 @@ public class DependencyManager implements InstallShinyEvent.Handler
            Dependency.cranPackage("htmltools", "0.3"),
            Dependency.cranPackage("yaml", "2.1.5"),
            Dependency.cranPackage("htmlwidgets", "0.6", true),
-           Dependency.embeddedPackage("profvis")
+           Dependency.cranPackage("profvis", "0.3.2", true)
           
         }, 
         true, // update profvis if needed
@@ -828,6 +831,27 @@ public class DependencyManager implements InstallShinyEvent.Handler
       for (int i = 0; i < dependencies.length(); i++)
          deps.add(dependencies.get(i).getName());
       return StringUtil.join(deps, ", ");
+   }
+   
+   public void withUnsatisfiedDependencies(final Dependency dependency,
+                                           final ServerRequestCallback<JsArray<Dependency>> requestCallback)
+   {
+      List<Dependency> dependencies = new ArrayList<Dependency>();
+      dependencies.add(dependency);
+      withUnsatisfiedDependencies(dependencies, requestCallback);
+   }
+   
+   public void withUnsatisfiedDependencies(final List<Dependency> dependencies,
+                                           final ServerRequestCallback<JsArray<Dependency>> requestCallback)
+   {
+      JsArray<Dependency> jsDependencies = JsArray.createArray(dependencies.size()).cast();
+      for (int i = 0; i < dependencies.size(); i++)
+         jsDependencies.set(i, dependencies.get(i));
+      
+      server_.unsatisfiedDependencies(
+            jsDependencies,
+            false,
+            requestCallback);
    }
    
    private final GlobalDisplay globalDisplay_;

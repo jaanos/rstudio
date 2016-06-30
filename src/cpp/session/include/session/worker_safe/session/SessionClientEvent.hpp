@@ -152,6 +152,16 @@ extern const int kRprofCreated;
 extern const int kEditorCommand;
 extern const int kPreviewRmd;
 extern const int kWebsiteFileSaved;
+extern const int kChunkPlotRefreshed;
+extern const int kChunkPlotRefreshFinished;
+extern const int kReloadWithLastChanceSave;
+extern const int kConnectionUpdated;
+extern const int kEnableConnections;
+extern const int kConnectionListChanged;
+extern const int kActiveConnectionsChanged;
+extern const int kConnectionOpened;
+extern const int kNotebookRangeExecuted;
+extern const int kChunkExecStateChanged;
 }
    
 class ClientEvent
