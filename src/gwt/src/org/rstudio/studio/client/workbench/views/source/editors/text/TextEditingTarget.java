@@ -21,6 +21,7 @@ import com.google.gwt.core.client.JsArrayString;
 import com.google.gwt.core.client.Scheduler;
 import com.google.gwt.core.client.Scheduler.RepeatingCommand;
 import com.google.gwt.core.client.Scheduler.ScheduledCommand;
+import com.google.gwt.dom.client.Element;
 import com.google.gwt.dom.client.NativeEvent;
 import com.google.gwt.dom.client.Style.FontWeight;
 import com.google.gwt.event.dom.client.*;
@@ -46,7 +47,6 @@ import org.rstudio.core.client.*;
 import org.rstudio.core.client.command.AppCommand;
 import org.rstudio.core.client.command.CommandBinder;
 import org.rstudio.core.client.command.Handler;
-import org.rstudio.core.client.command.KeyboardHelper;
 import org.rstudio.core.client.command.KeyboardShortcut;
 import org.rstudio.core.client.events.EnsureHeightHandler;
 import org.rstudio.core.client.events.EnsureVisibleHandler;
@@ -144,6 +144,7 @@ import org.rstudio.studio.client.workbench.views.source.editors.text.ace.VimMark
 import org.rstudio.studio.client.workbench.views.source.editors.text.cpp.CppCompletionContext;
 import org.rstudio.studio.client.workbench.views.source.editors.text.cpp.CppCompletionOperation;
 import org.rstudio.studio.client.workbench.views.source.editors.text.events.*;
+import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.ChunkExecUnit;
 import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.TextEditingTargetNotebook;
 import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.events.InterruptChunkEvent;
 import org.rstudio.studio.client.workbench.views.source.editors.text.status.StatusBar;
@@ -445,13 +446,16 @@ public class TextEditingTarget implements
        
       docDisplay_.addKeyDownHandler(new KeyDownHandler()
       {
-         @SuppressWarnings("deprecation")
          public void onKeyDown(KeyDownEvent event)
          {
             NativeEvent ne = event.getNativeEvent();
             int mod = KeyboardShortcut.getModifierValue(ne);
             
-            if ((mod == KeyboardShortcut.META || (mod == KeyboardShortcut.CTRL && !BrowseCap.hasMetaKey() && !docDisplay_.isEmacsModeOn()))
+            if ((mod == KeyboardShortcut.META || (
+                  mod == KeyboardShortcut.CTRL &&
+                  !BrowseCap.hasMetaKey() &&
+                  !docDisplay_.isEmacsModeOn() &&
+                  (!docDisplay_.isVimModeOn() || docDisplay_.isVimInInsertMode())))
                 && ne.getKeyCode() == 'F')
             {
                event.preventDefault();
@@ -465,19 +469,6 @@ public class TextEditingTarget implements
                event.preventDefault();
                event.stopPropagation();
                commands_.findFromSelection().execute();
-            }
-            else if (mod == KeyboardShortcut.ALT &&
-                     KeyboardHelper.isHyphenKeycode(ne.getKeyCode()))
-            {
-               event.preventDefault();
-               event.stopPropagation();
-               
-               if (Character.isSpace(docDisplay_.getCharacterBeforeCursor()) ||
-                   (!docDisplay_.hasSelection() &&
-                         docDisplay_.getCursorPosition().getColumn() == 0))
-                  docDisplay_.insertCode("<- ", false);
-               else
-                  docDisplay_.insertCode(" <- ", false);
             }
             else if (mod == KeyboardShortcut.CTRL
                      && ne.getKeyCode() == KeyCodes.KEY_UP
@@ -511,22 +502,6 @@ public class TextEditingTarget implements
                
                if (commands_.interruptR().isEnabled())
                   commands_.interruptR().execute();
-            }
-            else if (ne.getKeyCode() == KeyCodes.KEY_M && (
-                  (BrowseCap.hasMetaKey() &&
-                   mod == (KeyboardShortcut.META + KeyboardShortcut.SHIFT)) ||
-                  (!BrowseCap.hasMetaKey() &&
-                   mod == (KeyboardShortcut.CTRL + KeyboardShortcut.SHIFT))))
-            {
-               event.preventDefault();
-               event.stopPropagation();
-               
-               if (Character.isSpace(docDisplay_.getCharacterBeforeCursor()) ||
-                   (!docDisplay_.hasSelection() &&
-                         docDisplay_.getCursorPosition().getColumn() == 0))
-                  docDisplay_.insertCode("%>% ", false);
-               else
-                  docDisplay_.insertCode(" %>% ", false);
             }
             else if (
                   prefs_.continueCommentsOnNewline().getValue() && 
@@ -580,6 +555,21 @@ public class TextEditingTarget implements
          @Override
          public void onCommandClick(CommandClickEvent event)
          {
+            // bail if the target is a link marker (implies already handled)
+            NativeEvent nativeEvent = event.getNativeEvent();
+            Element target = nativeEvent.getEventTarget().cast();
+            if (target != null && target.hasClassName("ace_marker"))
+            {
+               nativeEvent.stopPropagation();
+               nativeEvent.preventDefault();
+               return;
+            }
+            
+            // force cursor position
+            Position position = event.getEvent().getDocumentPosition();
+            docDisplay_.setCursorPosition(position);
+            
+            // delegate to handlers
             if (fileType_.canCompilePDF() && 
                 commands_.synctexSearch().isEnabled())
             {
@@ -2632,6 +2622,10 @@ public class TextEditingTarget implements
    {
       docDisplay_.focus();
       
+      // Save folds (we need to remove them temporarily for the rename helper)
+      final JsArray<AceFold> folds = docDisplay_.getFolds();
+      docDisplay_.unfoldAll();
+      
       int matches = renameHelper_.renameInScope();
       if (matches <= 0)
       {
@@ -2641,6 +2635,8 @@ public class TextEditingTarget implements
             view_.getStatusBar().showMessage(message, 1000);
          }
          
+         for (AceFold fold : JsUtil.asIterable(folds))
+            docDisplay_.addFold(fold.getRange());
          return;
       }
       
@@ -2656,6 +2652,13 @@ public class TextEditingTarget implements
       docDisplay_.disableSearchHighlight();
       view_.getStatusBar().showMessage(message, new HideMessageHandler()
       {
+         private boolean onRenameFinished(boolean value)
+         {
+            for (AceFold fold : JsUtil.asIterable(folds))
+               docDisplay_.addFold(fold.getRange());
+            return value;
+         }
+         
          @Override
          public boolean onNativePreviewEvent(NativePreviewEvent preview)
          {
@@ -2669,7 +2672,7 @@ public class TextEditingTarget implements
                docDisplay_.exitMultiSelectMode();
                docDisplay_.clearSelection();
                docDisplay_.enableSearchHighlight();
-               return true;
+               return onRenameFinished(true);
             }
 
             // Otherwise, handle key events
@@ -2685,7 +2688,7 @@ public class TextEditingTarget implements
                   docDisplay_.exitMultiSelectMode();
                   docDisplay_.clearSelection();
                   docDisplay_.enableSearchHighlight();
-                  return true;
+                  return onRenameFinished(true);
                }
             }
             
@@ -3159,6 +3162,13 @@ public class TextEditingTarget implements
    {
       if (notebook_ != null)
          notebook_.onNotebookExpandAllOutput();
+   }
+   
+   @Handler
+   public void onNotebookClearOutput()
+   {
+      if (notebook_ != null)
+         notebook_.onNotebookClearOutput();
    }
    
    @Handler
@@ -4029,8 +4039,7 @@ public class TextEditingTarget implements
       return Position.create(endRow, endColumn);
    }
    
-   @Handler
-   void onInsertChunk()
+   private void onInsertChunk(String chunkPlaceholder, int rowOffset, int colOffset)
    {
       String sel = null;
       Range selRange = null;
@@ -4053,6 +4062,8 @@ public class TextEditingTarget implements
       InsertChunkInfo insertChunkInfo = docDisplay_.getInsertChunkInfo();
       if (insertChunkInfo != null)
       {
+         insertChunkInfo.setValue(chunkPlaceholder);
+         
          // inject the chunk skeleton
          docDisplay_.insertCode(insertChunkInfo.getValue(), false);
 
@@ -4076,8 +4087,8 @@ public class TextEditingTarget implements
                
          Position cursorPosition = insertChunkInfo.getCursorPosition();
          docDisplay_.setCursorPosition(Position.create(
-               pos.getRow() + cursorPosition.getRow(),
-               cursorPosition.getColumn()));
+               pos.getRow() + cursorPosition.getRow() + rowOffset,
+               colOffset));
          docDisplay_.focus();
       }
       else
@@ -4085,7 +4096,70 @@ public class TextEditingTarget implements
          assert false : "Mode did not have insertChunkInfo available";
       }
    }
+
+   @Handler
+   void onInsertChunk()
+   {
+      onInsertChunkR();
+   }
    
+   @Handler
+   void onInsertChunkR()
+   {
+      onInsertChunk("```{r}\n\n```\n", 1, 0);
+   }
+
+   @Handler
+   void onInsertChunkBash()
+   {
+      onInsertChunk("```{bash}\n\n```\n", 1, 0);
+   }
+
+   @Handler
+   void onInsertChunkPython()
+   {
+      onInsertChunk("```{python}\n\n```\n", 1, 0);
+   }
+
+   @Handler
+   void onInsertChunkRCPP()
+   {
+      onInsertChunk("```{rcpp}\n\n```\n", 1, 0);
+   }
+
+   @Handler
+   void onInsertChunkStan()
+   {
+      onInsertChunk("```{stan output.var=}\n\n```\n", 0, 20);
+   }
+
+   @Handler
+   void onInsertChunkSQL()
+   {
+      server_.defaultSqlConnectionName(new ServerRequestCallback<String>()
+      {
+         @Override
+         public void onResponseReceived(String name)
+         {
+            if (name != null)
+            {
+               onInsertChunk("```{sql connection=" + name + "}\n\n```\n", 1, 0);
+            }
+            else
+            {
+               onInsertChunk("```{sql connection=}\n\n```\n", 0, 19);
+            }
+         }
+         
+         @Override
+         public void onError(ServerError error)
+         {
+            Debug.logError(error);
+            onInsertChunk("```{sql connection=}\n\n```\n", 0, 19);
+         }
+      });
+   }
+
    @Handler
    void onInsertSection()
    {
@@ -4280,15 +4354,15 @@ public class TextEditingTarget implements
             jobDesc = "Run After";
       }
 
-      ArrayList<Scope> scopes = new ArrayList<Scope>();
+      List<ChunkExecUnit> chunks = new ArrayList<ChunkExecUnit>();
       for (Scope scope : previousScopes)
       {
          if (isExecutableChunk(scope))
-            scopes.add(scope);
+            chunks.add(new ChunkExecUnit(scope));
       }
       
-      if (!scopes.isEmpty())
-         notebook_.executeChunks(jobDesc, scopes);
+      if (!chunks.isEmpty())
+         notebook_.executeChunks(jobDesc, chunks);
    }
    
    @Handler
@@ -4826,7 +4900,7 @@ public class TextEditingTarget implements
    
    void renderRmd(final String paramsFile)
    { 
-      events_.fireEvent(new RmdRenderPendingEvent());
+      events_.fireEvent(new RmdRenderPendingEvent(docUpdateSentinel_.getId()));
       
       final int type = isShinyDoc() ? RmdOutput.TYPE_SHINY:
                                       isRmdNotebook() ? RmdOutput.TYPE_NOTEBOOK:
@@ -5167,6 +5241,52 @@ public class TextEditingTarget implements
          }
       });  
    }
+   
+   @Handler
+   void onClearKnitrCache()
+   {
+      withSavedDoc(new Command() {
+         @Override
+         public void execute()
+         {
+            // determine the cache path (use relative path if possible)
+            String path = docUpdateSentinel_.getPath();
+            FileSystemItem fsi = FileSystemItem.createFile(path);
+            path = fsi.getParentPath().completePath(fsi.getStem() + "_cache");
+            String relativePath = FileSystemItem.createFile(path).getPathRelativeTo(
+                workbenchContext_.getCurrentWorkingDir());
+            if (relativePath != null)
+               path = relativePath;
+            final String docPath = path;
+            
+            globalDisplay_.showYesNoMessage(
+               MessageDialog.QUESTION, 
+               "Clear Knitr Cache", 
+               "Clearing the Knitr cache will delete the cache " +
+               "directory for this document (\"" + docPath + "\"). " +
+               "\n\nAre you sure you want to clear the cache now?",
+               false,
+               new Operation() {
+                  @Override
+                  public void execute()
+                  {
+                     String code = "unlink(" + 
+                                   ConsoleDispatcher.escapedPath(docPath) + 
+                                   ", recursive = TRUE)";
+                     events_.fireEvent(new SendToConsoleEvent(code, true));
+                  }
+               },
+               null,
+               true);  
+            
+         }
+         
+      });
+      
+     
+   }
+   
+   
    
    @Handler
    void onSynctexSearch()
@@ -6117,6 +6237,11 @@ public class TextEditingTarget implements
    public StatusBar getStatusBar()
    {
       return statusBar_;
+   }
+
+   public TextEditingTargetNotebook getNotebook()
+   {
+      return notebook_;
    }
    
    private StatusBar statusBar_;

@@ -179,6 +179,11 @@ Error NotebookQueueUnit::innerCode(std::string* pCode)
          string_utils::wideToUtf8(code_)).call(pCode);
 }
 
+bool NotebookQueueUnit::hasPendingRanges()
+{
+   return !pending_.empty();
+}
+
 void NotebookQueueUnit::updateFrom(const NotebookQueueUnit& other)
 {
    // replace code
@@ -228,6 +233,10 @@ json::Object NotebookQueueUnit::toJson() const
 std::string NotebookQueueUnit::popExecRange(ExecRange* pRange, 
       ExpressionMode mode)
 {
+   // do we have any unevaluated code in this execution unit?
+   if (pending_.empty())
+      return "";
+
    // extract next range to execute
    ExecRange& range = *pending_.begin();
    int start = range.start;
@@ -235,7 +244,7 @@ std::string NotebookQueueUnit::popExecRange(ExecRange* pRange,
 
    // use the first line of the range if it's multi-line
    size_t idx = code_.find('\n', start + 1);
-   if (idx != std::string::npos && static_cast<int>(idx) < stop)
+   if (idx != std::string::npos && static_cast<int>(idx) < (stop - 1))
    {
       stop = idx;
 

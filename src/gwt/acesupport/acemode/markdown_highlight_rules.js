@@ -63,6 +63,7 @@ var RubyHighlightRules = require("ace/mode/ruby_highlight_rules").RubyHighlightR
 var ScalaHighlightRules = require("ace/mode/scala_highlight_rules").ScalaHighlightRules;
 var ShHighlightRules = require("ace/mode/sh_highlight_rules").ShHighlightRules;
 var StanHighlightRules = require("mode/stan_highlight_rules").StanHighlightRules;
+var SqlHighlightRules = require("mode/sql_highlight_rules").SqlHighlightRules;
 
 var escaped = function(ch) {
     return "(?:[^" + lang.escapeRegExp(ch) + "\\\\]|\\\\.)*";
@@ -86,6 +87,28 @@ var MarkdownHighlightRules = function() {
     // regexp must not have capturing parentheses
     // regexps are ordered -> the first match is used
 
+    // handle highlighting for *abc*, _abc_ separately, as pandoc's
+    // parser is a bit more strict about where '_' can appear
+    var strongUnderscore = {
+        token: ["text", "constant.numeric"],
+        regex: "(\\s+|^)(__.+?__)\\b"
+    };
+
+    var emphasisUnderscore = {
+        token: ["text", "constant.language.boolean"],
+        regex: "(\\s+|^)(_(?=[^_])(?:(?:\\\\.)|(?:[^_\\\\]))*?_)\\b"
+    };
+
+    var strongStars = {
+        token: ["constant.numeric"],
+        regex: "([*][*].+?[*][*])"
+    };
+
+    var emphasisStars = {
+        token: ["constant.language.boolean"],
+        regex: "([*](?=[^*])(?:(?:\\\\.)|(?:[^*\\\\]))*?[*])"
+    };
+
     this.$rules = {
 
         "basic" : [{
@@ -101,20 +124,19 @@ var MarkdownHighlightRules = function() {
             token : ["text", "keyword", "text", "constant", "text"],
             regex : "(\\[)(" + escaped("]") + ")(\\]\s*\\[)("+ escaped("]") + ")(\\])"
         }, { // link by url
-            token : ["text", "keyword", "text", "markup.underline", "string", "text"],
+            token : ["text", "keyword", "text", "markup.href", "string", "text"],
             regex : "(\\[)(" +                                    // [
                 escaped("]") +                                    // link text
                 ")(\\]\\()"+                                      // ](
                 '((?:[^\\)\\s\\\\]|\\\\.|\\s(?=[^"]))*)' +        // href
                 '(\\s*"' +  escaped('"') + '"\\s*)?' +            // "title"
                 "(\\))"                                           // )
-        }, { // strong ** __
-            token : ["constant.numeric", "constant.numeric", "constant.numeric"],
-            regex : "([*]{2}|[_]{2}(?=\\S))(.*?\\S[*_]*)(\\1)"
-        }, { // emphasis * _
-            token : ["constant.language.boolean", "constant.language.boolean", "constant.language.boolean"],
-            regex : "([*]|[_](?=\\S))(.*?\\S[*_]*)(\\1)"
-        }, { //
+        },
+            strongStars,
+            strongUnderscore,
+            emphasisStars,
+            emphasisUnderscore,
+        {
             token : ["text", "keyword", "text"],
             regex : "(<)("+
                 "(?:https?|ftp|dict):[^'\">\\s]+"+
@@ -159,6 +181,7 @@ var MarkdownHighlightRules = function() {
         github_embed("sh", "shcode-"),
         github_embed("bash", "bashcode-"),
         github_embed("stan", "stancode-"),
+        github_embed("sql", "sqlcode-"),
         
         { // Github style block
             token : "support.function",
@@ -185,30 +208,29 @@ var MarkdownHighlightRules = function() {
             token : "constant",
             regex : "^[ ]{0,2}(?:[ ]?\\_[ ]?){3,}\\s*$"
         }, { // MathJax native display \[ ... \]
-            token : "markup.list",
+            token : "latex.markup.list.begin",
             regex : "\\\\\\[",
             next  : "mathjaxnativedisplay"
         }, { // MathJax native inline \( ... \)
-            token : "markup.list",
+            token : "latex.markup.list.begin",
             regex : "\\\\\\(",
             next  : "mathjaxnativeinline"
         }, { // $ escape
             token : "text",
             regex : "\\\\\\$"
         }, { // MathJax $$
-            token : "markup.list",
+            token : "latex.markup.list.begin",
             regex : "\\${2}",
             next  : "mathjaxdisplay"
         }, { // MathJax $...$ (org-mode style)
-            token : ["markup.list","support.function","markup.list"],
+            token : ["latex.markup.list.begin","latex.support.function","latex.markup.list.end"],
             regex : "(\\$)((?:(?:\\\\.)|(?:[^\\$\\\\]))*?)(\\$)"
-        }, { // strong ** __
-            token : ["constant.numeric", "constant.numeric", "constant.numeric"],
-            regex : "([*]{2}|[_]{2}(?=\\S))([^\\r]*?\\S[*_]*)(\\1)"
-        }, { // emphasis * _
-            token : ["constant.language.boolean", "constant.language.boolean", "constant.language.boolean"],
-            regex : "([*]|[_](?=\\S))([^\\r]*?\\S[*_]*)(\\1)"
-        }, { // simple links <url>
+        },
+            strongStars,
+            strongUnderscore,
+            emphasisStars,
+            emphasisUnderscore,
+        { // simple links <url>
             token : ["text", "keyword", "text"],
             regex : "(<)("+
                 "(?:https?|ftp|dict):[^'\">\\s]+"+
@@ -229,7 +251,7 @@ var MarkdownHighlightRules = function() {
             regex : "-?\\@[\\w\\d-]+"
         }, {
             token : "text",
-            regex : "[^\\*_%$`\\[#<>\\\\@]+"
+            regex : "[^\\*_%$`\\[#<>\\\\@\\s]+"
         }, {
             token : "text",
             regex : "\\\\"
@@ -344,29 +366,29 @@ var MarkdownHighlightRules = function() {
         }],
 
         "mathjaxdisplay" : [{
-            token : "markup.list",
+            token : "latex.markup.list.end",
             regex : "\\${2}",
             next  : "start"
         }, {
-            token : "support.function",
+            token : "latex.support.function",
             regex : "[^\\$]+"
         }],
         
         "mathjaxnativedisplay" : [{
-            token : "markup.list",
+            token : "latex.markup.list.end",
             regex : "\\\\\\]",
             next  : "start"
         }, {
-            token : "support.function",
+            token : "latex.support.function",
             regex : "[\\s\\S]+?"
         }],
         
         "mathjaxnativeinline" : [{
-            token : "markup.list",
+            token : "latex.markup.list.end",
             regex : "\\\\\\)",
             next  : "start"
         }, {
-            token : "support.function",
+            token : "latex.support.function",
             regex : "[\\s\\S]+?"
         }]
 
@@ -427,6 +449,12 @@ var MarkdownHighlightRules = function() {
     }]);
 
     this.embedRules(ShHighlightRules, "bashcode-", [{
+        token : "support.function",
+        regex : "^\\s*```",
+        next  : "pop"
+    }]);
+
+    this.embedRules(SqlHighlightRules, "sqlcode-", [{
         token : "support.function",
         regex : "^\\s*```",
         next  : "pop"

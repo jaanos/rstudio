@@ -72,7 +72,7 @@ public interface RMarkdownServerOperations extends CryptoServerOperations
                 ServerRequestCallback<RmdOutputInfo> resultCallback);
    
    void refreshChunkOutput(String docPath, String docId, String contextId,
-                           String requestId, 
+                           String requestId, String chunkId,
                            ServerRequestCallback<NotebookDocQueue> requestCallback);
    
    void setChunkConsole(String docId, String chunkId, int commitMode, 
@@ -80,10 +80,17 @@ public interface RMarkdownServerOperations extends CryptoServerOperations
                         int pixelWidth, int characterWidth, 
                         ServerRequestCallback<RmdChunkOptions> requestCallback);
    
-   void createNotebookFromCache(String rmdPath, String outputPath, ServerRequestCallback<Void> requestCallback);
+   void createNotebookFromCache(String rmdPath, String outputPath, 
+         ServerRequestCallback<NotebookCreateResult> requestCallback);
    
    void replayNotebookPlots(String docId, String initialChunkId, int pixelWidth, 
-         ServerRequestCallback<Boolean> requestCallback);
+         int pixelHeight, ServerRequestCallback<String> requestCallback);
+
+   void replayNotebookChunkPlots(String docId, String chunkId, int pixelWidth, 
+         int pixelHeight, ServerRequestCallback<String> requestCallback);
+
+   void cleanReplayNotebookChunkPlots(String docId, String chunkId, 
+         ServerRequestCallback<Void> requestCallback);
    
    void executeNotebookChunks(NotebookDocQueue queue, 
          ServerRequestCallback<Void> requestCallback);

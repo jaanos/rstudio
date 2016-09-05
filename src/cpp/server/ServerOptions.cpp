@@ -22,6 +22,7 @@
 #include <core/ProgramStatus.hpp>
 #include <core/ProgramOptions.hpp>
 #include <core/FilePath.hpp>
+#include <core/FileSerializer.hpp>
 
 #include <core/system/PosixUser.hpp>
 #include <core/system/PosixSystem.hpp>
@@ -262,7 +263,7 @@ ProgramStatus Options::read(int argc,
          "rsession user process limit - DEPRECATED");
    
    // still read depracated options (so we don't break config files)
-   std::string authMinimumUserId;
+   std::string authMinimumUserId, authLoginPageHtml;
    options_description auth("auth");
    auth.add_options()
       ("auth-none",
@@ -279,6 +280,9 @@ ProgramStatus Options::read(int argc,
       ("auth-encrypt-password",
         value<bool>(&authEncryptPassword_)->default_value(true),
         "encrypt password sent from login form")
+      ("auth-login-page-html",
+        value<std::string>(&authLoginPageHtml)->default_value("/etc/rstudio/login.html"),
+        "path to file containing additional html for login page")
       ("auth-required-user-group",
         value<std::string>(&authRequiredUserGroup_)->default_value(""),
         "limit to users belonging to the specified group")
@@ -391,6 +395,15 @@ ProgramStatus Options::read(int argc,
 
    // resolve minimum user id
    authMinimumUserId_ = resolveMinimumUserId(authMinimumUserId, osWarnings);
+
+   // read auth login html
+   FilePath loginPageHtmlPath(authLoginPageHtml);
+   if (loginPageHtmlPath.exists())
+   {
+      Error error = core::readStringFromFile(loginPageHtmlPath, &authLoginPageHtml_);
+      if (error)
+         LOG_ERROR(error);
+   }
 
    // return status
    return status;

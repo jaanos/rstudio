@@ -14,18 +14,29 @@
  */
 package org.rstudio.studio.client.workbench.views.source.editors.text.rmd;
 
+import java.util.Map;
+
+import org.rstudio.core.client.StringUtil;
 import org.rstudio.core.client.widget.Operation;
 import org.rstudio.studio.client.RStudioGinjector;
 import org.rstudio.studio.client.common.GlobalDisplay;
+import org.rstudio.studio.client.common.r.knitr.RMarkdownChunkHeaderParser;
 import org.rstudio.studio.client.workbench.views.console.shell.assist.PopupPositioner;
+import org.rstudio.studio.client.workbench.views.source.editors.text.DocDisplay;
 import org.rstudio.studio.client.workbench.views.source.editors.text.PinnedLineWidget;
 import org.rstudio.studio.client.workbench.views.source.editors.text.Scope;
 import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTarget;
 import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTargetScopeHelper;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ace.LineWidget;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ace.Position;
+import org.rstudio.studio.client.workbench.views.source.editors.text.ace.Range;
+import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.display.ChunkOptionsPopupPanel;
+import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.display.CustomEngineChunkOptionsPopupPanel;
+import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.display.DefaultChunkOptionsPopupPanel;
+import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.display.SetupChunkOptionsPopupPanel;
 import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.events.InterruptChunkEvent;
 
+import com.google.gwt.core.client.JsArrayString;
 import com.google.gwt.regexp.shared.RegExp;
 
 public class ChunkContextUi implements ChunkContextToolbar.Host
@@ -34,6 +45,7 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
          boolean dark, Scope chunk, PinnedLineWidget.Host lineWidgetHost)
    {
       target_ = target;
+      chunk_ = chunk;
       int preambleRow = chunk.getPreamble().getRow();
       preambleRow_ = preambleRow;
       isSetup_ = isSetupChunk(preambleRow);
@@ -41,6 +53,7 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
       host_ = lineWidgetHost;
       dark_ = dark;
       renderPass_ = renderPass;
+      engine_ = getEngine(preambleRow);
       createToolbar(preambleRow);
    }
    
@@ -81,6 +94,12 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
          isEval_ = isEval;
          toolbar_.setRun(isEval);
       }
+      String engine = getEngine(row);
+      if (engine != engine_)
+      {
+         engine_ = engine;
+         toolbar_.setEngine(engine);
+      }
    }
    
    public void setRenderPass(int pass)
@@ -113,9 +132,7 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
    @Override
    public void showOptions(int x, int y)
    {
-      ChunkOptionsPopupPanel panel = isSetupChunk(lineWidget_.getRow()) ?
-         new SetupChunkOptionsPopupPanel() :
-         new DefaultChunkOptionsPopupPanel();
+      ChunkOptionsPopupPanel panel = createPopupPanel();
       
       panel.init(target_.getDocDisplay(), chunkPosition());
       panel.show();
@@ -152,6 +169,33 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
             "Don't Run", true);
    }
 
+   @Override
+   public void switchChunk(String chunkType)
+   {
+      if (chunk_ != null)
+      {
+         DocDisplay docDisplay = target_.getDocDisplay();
+         
+         Position start = chunk_.getPreamble();
+         Position end = chunk_.getEnd();
+         
+         String chunkText = docDisplay.getTextForRange(Range.fromPoints(start, end));
+         JsArrayString chunkLines = StringUtil.split(chunkText, "\n");
+         if (chunkLines.length() > 0)
+         {
+            String firstLine = chunkLines.get(0);
+            Position linedEnd = Position.create(start.getRow(),firstLine.length());
+            
+            String newFirstLine = firstLine.replaceFirst("[, ]*engine='[a-zA-Z]+'", "");
+            newFirstLine = newFirstLine.replaceFirst("{[a-zA-Z]+", "{" + chunkType);
+
+            docDisplay.replaceRange(Range.fromPoints(start, linedEnd), newFirstLine);
+            
+            target_.getNotebook().clearChunkOutput(chunk_);
+         }
+      }
+   }
+
    // Private methods ---------------------------------------------------------
    
    private Position chunkPosition()
@@ -174,17 +218,42 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
    
    private void createToolbar(int row)
    {
-      toolbar_ = new ChunkContextToolbar(this, dark_, !isSetup_, isEval_);
+      toolbar_ = new ChunkContextToolbar(this, dark_, !isSetup_, isEval_, engine_);
       toolbar_.setHeight("0px"); 
       lineWidget_ = new PinnedLineWidget(
             ChunkContextToolbar.LINE_WIDGET_TYPE, target_.getDocDisplay(), 
             toolbar_, row, null, host_);
    }
 
+   private String getEngine(int row)
+   {
+      String line = target_.getDocDisplay().getLine(row);
+
+      Map<String, String> options = 
+         RMarkdownChunkHeaderParser.parse(line);
+      
+      String engine = StringUtil.stringValue(options.get("engine"));
+      return engine;
+   }
+   
+   private ChunkOptionsPopupPanel createPopupPanel()
+   {
+      int row = lineWidget_.getRow();
+      if (isSetupChunk(row))
+         return new SetupChunkOptionsPopupPanel();
+      
+      String engine = getEngine(row);
+      if (!engine.toLowerCase().equals("r"))
+         return new CustomEngineChunkOptionsPopupPanel();
+      
+      return new DefaultChunkOptionsPopupPanel();
+   }
+
    private final TextEditingTarget target_;
    private final PinnedLineWidget.Host host_;
    private final int preambleRow_;
    private final boolean dark_;
+   private final Scope chunk_;
 
    private ChunkContextToolbar toolbar_;
    private PinnedLineWidget lineWidget_;
@@ -192,4 +261,5 @@ public class ChunkContextUi implements ChunkContextToolbar.Host
    
    private boolean isSetup_;
    private boolean isEval_;
+   private String engine_;
 }

@@ -178,7 +178,9 @@ SEXP asEnvironment(std::string name)
    if (name == "base")
       return R_BaseEnv;
    
-   name = "package:" + name;
+   // prefix with 'package:' if no prefix specified yet
+   if (name.find(":") == std::string::npos)
+      name = "package:" + name;
    
    SEXP envSEXP = ENCLOS(R_GlobalEnv);
    while (envSEXP != R_EmptyEnv)
@@ -1457,7 +1459,7 @@ core::Error extractFunctionInfo(
    // the formals take as entries in that character vector). However, it does
    // not distinguish between the case of having no default value, and an
    // empty string as a default value, so we handle that specially.
-   SEXP defaultValues;
+   SEXP defaultValues = R_NilValue;
    if (extractDefaultArguments)
       protect.add(defaultValues = Rf_coerceVector(formals, STRSXP));
    

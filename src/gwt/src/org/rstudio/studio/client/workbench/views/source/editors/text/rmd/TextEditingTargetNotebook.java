@@ -19,27 +19,28 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-import org.rstudio.core.client.CommandWithArg;
 import org.rstudio.core.client.Debug;
 import org.rstudio.core.client.JsArrayUtil;
 import org.rstudio.core.client.StringUtil;
 import org.rstudio.core.client.command.AppCommand;
+import org.rstudio.core.client.dom.DomUtils;
+import org.rstudio.core.client.dom.WindowEx;
 import org.rstudio.core.client.layout.FadeOutAnimation;
 import org.rstudio.core.client.widget.Operation;
 import org.rstudio.studio.client.RStudioGinjector;
+import org.rstudio.studio.client.application.events.CrossWindowEvent;
 import org.rstudio.studio.client.application.events.EventBus;
 import org.rstudio.studio.client.application.events.InterruptStatusEvent;
 import org.rstudio.studio.client.application.events.RestartStatusEvent;
-import org.rstudio.studio.client.common.FilePathUtils;
 import org.rstudio.studio.client.common.GlobalDisplay;
 import org.rstudio.studio.client.common.dependencies.DependencyManager;
-import org.rstudio.studio.client.common.dependencies.model.Dependency;
-import org.rstudio.studio.client.rmarkdown.RmdOutput;
+import org.rstudio.studio.client.common.satellite.SatelliteManager;
 import org.rstudio.studio.client.rmarkdown.events.ChunkPlotRefreshFinishedEvent;
 import org.rstudio.studio.client.rmarkdown.events.ChunkPlotRefreshedEvent;
 import org.rstudio.studio.client.rmarkdown.events.RmdChunkOutputEvent;
 import org.rstudio.studio.client.rmarkdown.events.RmdChunkOutputFinishedEvent;
 import org.rstudio.studio.client.rmarkdown.events.SendToChunkConsoleEvent;
+import org.rstudio.studio.client.rmarkdown.model.NotebookDoc;
 import org.rstudio.studio.client.rmarkdown.model.NotebookDocQueue;
 import org.rstudio.studio.client.rmarkdown.model.NotebookQueueUnit;
 import org.rstudio.studio.client.rmarkdown.model.RMarkdownServerOperations;
@@ -58,6 +59,7 @@ import org.rstudio.studio.client.workbench.views.source.Source;
 import org.rstudio.studio.client.workbench.views.source.SourceWindowManager;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ChunkOutputWidget;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ChunkRowExecState;
+import org.rstudio.studio.client.workbench.views.source.editors.text.ChunkWindowManager;
 import org.rstudio.studio.client.workbench.views.source.editors.text.DocDisplay;
 import org.rstudio.studio.client.workbench.views.source.editors.text.PinnedLineWidget;
 import org.rstudio.studio.client.workbench.views.source.editors.text.Scope;
@@ -65,18 +67,19 @@ import org.rstudio.studio.client.workbench.views.source.editors.text.ScopeList;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ScopeList.ScopePredicate;
 import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTarget;
 import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTargetChunks;
+import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTargetScopeHelper;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ace.LineWidget;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ace.Position;
 import org.rstudio.studio.client.workbench.views.source.editors.text.ace.Range;
 import org.rstudio.studio.client.workbench.views.source.editors.text.events.RenderFinishedEvent;
 import org.rstudio.studio.client.workbench.views.source.editors.text.events.ScopeTreeReadyEvent;
+import org.rstudio.studio.client.workbench.views.source.editors.text.events.ChunkSatelliteCacheEditorStyleEvent;
+import org.rstudio.studio.client.workbench.views.source.editors.text.events.ChunkSatelliteCodeExecutingEvent;
+import org.rstudio.studio.client.workbench.views.source.editors.text.events.ChunkSatelliteWindowOpenedEvent;
 import org.rstudio.studio.client.workbench.views.source.editors.text.events.EditorThemeStyleChangedEvent;
 import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.events.InterruptChunkEvent;
 import org.rstudio.studio.client.workbench.views.source.events.ChunkChangeEvent;
 import org.rstudio.studio.client.workbench.views.source.events.ChunkContextChangeEvent;
-import org.rstudio.studio.client.workbench.views.source.events.NotebookRenderFinishedEvent;
-import org.rstudio.studio.client.workbench.views.source.events.SaveFileEvent;
-import org.rstudio.studio.client.workbench.views.source.events.SaveFileHandler;
 import org.rstudio.studio.client.workbench.views.source.events.SourceDocAddedEvent;
 import org.rstudio.studio.client.workbench.views.source.model.DirtyState;
 import org.rstudio.studio.client.workbench.views.source.model.DocUpdateSentinel;
@@ -116,7 +119,8 @@ public class TextEditingTargetNotebook
                           ScopeTreeReadyEvent.Handler,
                           PinnedLineWidget.Host,
                           SourceDocAddedEvent.Handler,
-                          RenderFinishedEvent.Handler
+                          RenderFinishedEvent.Handler,
+                          ChunkSatelliteWindowOpenedEvent.Handler
 {
    public TextEditingTargetNotebook(final TextEditingTarget editingTarget,
                                     TextEditingTargetChunks chunks,
@@ -131,12 +135,16 @@ public class TextEditingTargetNotebook
       docUpdateSentinel_ = docUpdateSentinel;  
       dirtyState_ = dirtyState;
       releaseOnDismiss_ = releaseOnDismiss;
-      initialChunkDefs_ = JsArrayUtil.deepCopy(document.getChunkDefs());
+      notebookDoc_ = document.getNotebookDoc();
+      initialChunkDefs_ = JsArrayUtil.deepCopy(notebookDoc_.getChunkDefs());
       outputs_ = new HashMap<String, ChunkOutputUi>();
+      satelliteChunks_ = new ArrayList<String>();
+      satelliteChunkRequestIds_ = new ArrayList<String>();
       setupCrc32_ = docUpdateSentinel_.getProperty(LAST_SETUP_CRC32);
       editingTarget_ = editingTarget;
       chunks_ = chunks;
       editingDisplay_ = editingDisplay;
+      scopeHelper_ = new TextEditingTargetScopeHelper(docDisplay_);
       RStudioGinjector.INSTANCE.injectMembers(this);
       
       // initialize the display's default output mode based on 
@@ -208,89 +216,6 @@ public class TextEditingTargetNotebook
       // render to ensure that ace places the line widgets correctly)
       releaseOnDismiss.add(docDisplay_.addRenderFinishedHandler(this));
       
-      releaseOnDismiss.add(docDisplay_.addSaveCompletedHandler(new SaveFileHandler()
-      {
-         @Override
-         public void onSaveFile(SaveFileEvent event)
-         {
-            // bail if save handler already running (avoid accumulating
-            // multiple notebook creation requests)
-            if (isCreateNotebookSaveHandlerRunning_)
-               return;
-            
-            // bail if this was an autosave
-            if (event.isAutosave())
-               return;
-            
-            // bail if we don't render chunks inline (for safety--notebooks
-            // are always in this mode)
-            if (!docDisplay_.showChunkOutputInline())
-               return;
-            
-            // bail if no notebook output format
-            if (!editingTarget_.hasRmdNotebook())
-               return;
-            
-            final String rmdPath = docUpdateSentinel_.getPath();
-            
-            // bail if unsaved doc (no point in generating notebooks for those)
-            if (StringUtil.isNullOrEmpty(rmdPath))
-               return;
-            
-            final String outputPath =
-                  FilePathUtils.filePathSansExtension(rmdPath) + 
-                  RmdOutput.NOTEBOOK_EXT;
-            
-            isCreateNotebookSaveHandlerRunning_ = true;
-            
-            dependencyManager_.withUnsatisfiedDependencies(
-                  Dependency.embeddedPackage("rmarkdown"),
-                  new ServerRequestCallback<JsArray<Dependency>>()
-                  {
-                     @Override
-                     public void onResponseReceived(JsArray<Dependency> unsatisfiedDependencies)
-                     {
-                        if (unsatisfiedDependencies.length() == 0)
-                        {
-                           CommandWithArg<Boolean> onCompleted = new CommandWithArg<Boolean>()
-                           {
-                              @Override
-                              public void execute(Boolean arg)
-                              {
-                                 isCreateNotebookSaveHandlerRunning_ = false;
-                              }
-                           };
-                           
-                           createNotebookFromCache(rmdPath, outputPath, onCompleted);
-                           return;
-                        }
-                        
-                        Dependency dependency = unsatisfiedDependencies.get(0);
-                        String message;
-                        
-                        if (StringUtil.isNullOrEmpty(dependency.getVersion()))
-                        {
-                           message = "The rmarkdown package is not installed; notebook HTML file will not be generated.";
-                        }
-                        else
-                        {
-                           message = "An updated version of the rmarkdown package is required to generate notebook HTML files.";
-                        }
-                        
-                        editingDisplay_.showWarningBar(message);
-                        isCreateNotebookSaveHandlerRunning_ = false;
-                     }
-                     
-                     @Override
-                     public void onError(ServerError error)
-                     {
-                        Debug.logError(error);
-                     }
-                  }
-            );
-         }
-      }));
-      
       releaseOnDismiss_.add(editingTarget_.addInterruptChunkHandler(new InterruptChunkEvent.Handler()
       {
          @Override
@@ -329,45 +254,6 @@ public class TextEditingTargetNotebook
       }));
    }
    
-   public void createNotebookFromCache(final String rmdPath,
-                                       final String outputPath,
-                                       final CommandWithArg<Boolean> onCompleted)
-   {
-      Command createNotebookCmd = new Command()
-      {
-         @Override
-         public void execute()
-         {
-            server_.createNotebookFromCache(
-                  rmdPath,
-                  outputPath,
-                  new ServerRequestCallback<Void>()
-                  {
-                     @Override
-                     public void onResponseReceived(Void v)
-                     {
-                        events_.fireEvent(new NotebookRenderFinishedEvent(
-                              docUpdateSentinel_.getId(), 
-                              docUpdateSentinel_.getPath()));
-                        
-                        if (onCompleted != null)
-                           onCompleted.execute(true);
-                     }
-
-                     @Override
-                     public void onError(ServerError error)
-                     {
-                        Debug.logError(error);
-                        if (onCompleted != null)
-                           onCompleted.execute(false);
-                     }
-                  });
-         }
-      };
-      
-      dependencyManager_.withRMarkdown("R Notebook", "Creating R Notebooks", createNotebookCmd);
-   }
-   
    @Inject
    public void initialize(EventBus events, 
          RMarkdownServerOperations server,
@@ -386,7 +272,6 @@ public class TextEditingTargetNotebook
       prefs_ = prefs;
       commands_ = commands;
       pSourceWindowManager_ = pSourceWindowManager;
-      dependencyManager_ = dependencyManager;
       queue_ = new NotebookQueueState(docDisplay_, editingTarget_, 
             docUpdateSentinel_, server, events, this);
       
@@ -410,6 +295,8 @@ public class TextEditingTargetNotebook
             events_.addHandler(RestartStatusEvent.TYPE, this));
       releaseOnDismiss_.add(
             events_.addHandler(SourceDocAddedEvent.TYPE, this));
+      releaseOnDismiss_.add(
+            events_.addHandler(ChunkSatelliteWindowOpenedEvent.TYPE, this));
       
       // subscribe to global rmd output inline preference and sync
       // again when it changes
@@ -422,6 +309,12 @@ public class TextEditingTargetNotebook
                   syncOutputMode();
                }
             }));
+
+      // set up HTML rendering on save
+      htmlRenderer_ = new NotebookHtmlRenderer(docDisplay_, 
+            editingTarget_, editingDisplay_, docUpdateSentinel_, 
+            server_, events_, dependencyManager);
+      releaseOnDismiss_.add(docDisplay_.addSaveCompletedHandler(htmlRenderer_));
    }
    
    public void onActivate()
@@ -433,7 +326,8 @@ public class TextEditingTargetNotebook
       registerProgressHandlers();
    }
    
-   public void executeChunks(final String jobDesc, final List<Scope> chunks)
+   public void executeChunks(final String jobDesc, 
+                             final List<ChunkExecUnit> chunks)
    {
       if (queue_.isExecuting())
       {
@@ -475,15 +369,16 @@ public class TextEditingTargetNotebook
             if (!isSetupChunkScope(chunk) &&
                 needsSetupChunkExecuted())
             {
-               List<Scope> chunks = new ArrayList<Scope>();
-               chunks.add(getSetupChunkScope());
-               chunks.add(chunk);
+               List<ChunkExecUnit> chunks = new ArrayList<ChunkExecUnit>();
+               chunks.add(new ChunkExecUnit(getSetupChunkScope()));
+               chunks.add(new ChunkExecUnit(chunk));
                queue_.executeChunks("Run Chunks", chunks, 
                      NotebookQueueUnit.EXEC_MODE_BATCH);
             }
             else
             {
-               queue_.executeChunk(chunk, NotebookQueueUnit.EXEC_MODE_SINGLE);
+               queue_.executeChunk(new ChunkExecUnit(chunk), 
+                     NotebookQueueUnit.EXEC_MODE_SINGLE);
             }
          }
       });
@@ -500,6 +395,8 @@ public class TextEditingTargetNotebook
       commands_.notebookCollapseAllOutput().setVisible(inlineOutput);
       commands_.notebookExpandAllOutput().setEnabled(inlineOutput);
       commands_.notebookExpandAllOutput().setVisible(inlineOutput); 
+      commands_.notebookClearOutput().setEnabled(inlineOutput); 
+      commands_.notebookClearOutput().setVisible(inlineOutput); 
       commands_.notebookClearAllOutput().setEnabled(inlineOutput); 
       commands_.notebookClearAllOutput().setVisible(inlineOutput); 
       editingDisplay_.setNotebookUIVisible(inlineOutput);
@@ -519,6 +416,32 @@ public class TextEditingTargetNotebook
    public void onNotebookExpandAllOutput()
    {
       setAllExpansionStates(ChunkOutputWidget.EXPANDED);
+   }
+   
+   public void onNotebookClearOutput()
+   {
+      // find the current chunk 
+      Scope chunk = docDisplay_.getCurrentChunk();
+      clearChunkOutput(chunk);
+   }
+
+   public void clearChunkOutput(Scope chunk)
+   {
+      if (chunk == null)
+      {
+         // no-op if cursor is not inside a chunk
+         return;
+      }
+      
+      String chunkId = getRowChunkId(chunk.getPreamble().getRow());
+      if (chunkId == null)
+      {
+         // no-op if we don't have known output 
+         return;
+      }
+
+      events_.fireEvent(new ChunkChangeEvent(docUpdateSentinel_.getId(), 
+            chunkId, 0, ChunkChangeEvent.CHANGE_REMOVE));
    }
    
    public void onNotebookClearAllOutput()
@@ -597,13 +520,25 @@ public class TextEditingTargetNotebook
    {
       // update cached style 
       editorStyle_ = event.getStyle();
-      ChunkOutputWidget.cacheEditorStyle(event.getEditorContent(),
-            editorStyle_);
+      ChunkOutputWidget.cacheEditorStyle(
+         editorStyle_.getColor(),
+         editorStyle_.getBackgroundColor(),
+         DomUtils.extractCssValue("ace_editor", "color")
+      );
       
       for (ChunkOutputUi output: outputs_.values())
       {
          output.getOutputWidget().applyCachedEditorStyle();
       }
+
+      forwardEventToSatelliteAllChunks(
+         docUpdateSentinel_.getId(),
+         new ChunkSatelliteCacheEditorStyleEvent(
+            editorStyle_.getColor(),
+            editorStyle_.getBackgroundColor(),
+            DomUtils.extractCssValue("ace_editor", "color")
+         )
+      );
       
       // update if currently executing
       if (queue_.isExecuting())
@@ -611,7 +546,8 @@ public class TextEditingTargetNotebook
          NotebookQueueUnit unit = queue_.executingUnit();
          if (unit != null)
          {
-            setChunkExecuting(unit.getChunkId(), unit.getExecMode());
+            setChunkExecuting(unit.getChunkId(), unit.getExecMode(),
+                  unit.getExecScope());
          }
       }
    }
@@ -625,18 +561,19 @@ public class TextEditingTargetNotebook
       
       // execute setup chunk first if necessary
       if (needsSetupChunkExecuted() && !isSetupChunkScope(event.getScope()))
-         queue_.executeChunk(getSetupChunkScope(), 
-               NotebookQueueUnit.EXEC_MODE_BATCH);
-
-      docUpdateSentinel_.withSavedDoc(new Command()
       {
-         @Override
-         public void execute()
-         {
-            queue_.executeRange(event.getScope(), event.getRange(), 
-                  NotebookQueueUnit.EXEC_MODE_SINGLE);
-         }
-      });
+         List<ChunkExecUnit> chunks = new ArrayList<ChunkExecUnit>();
+         chunks.add(new ChunkExecUnit(getSetupChunkScope()));
+         chunks.add(new ChunkExecUnit(event.getScope(), event.getRange()));
+         queue_.executeChunks("Run Chunks", chunks, 
+               NotebookQueueUnit.EXEC_MODE_BATCH);
+      }
+      else
+      {
+         queue_.executeChunk(
+               new ChunkExecUnit(event.getScope(), event.getRange()), 
+               NotebookQueueUnit.EXEC_MODE_SINGLE);
+      }
    }
    
    @Override
@@ -657,6 +594,10 @@ public class TextEditingTargetNotebook
       }
 
       String chunkId = event.getOutput().getChunkId();
+      
+      // ignore requests performed to initialize satellite chunks
+      if (satelliteChunkRequestIds_.contains(event.getOutput().getRequestId()))
+         return;
       
       // if this is the currently executing chunk and it has an error...
       NotebookQueueUnit unit = queue_.executingUnit();
@@ -706,6 +647,47 @@ public class TextEditingTargetNotebook
       }
    }
 
+   private void forwardEventToSatelliteChunk(
+      String docId,
+      String chunkId,
+      CrossWindowEvent<?> event
+   )
+   {
+      if (satelliteChunks_.contains(chunkId))
+      {
+         SatelliteManager satelliteManager = RStudioGinjector.INSTANCE.getSatelliteManager();
+         ChunkWindowManager chunkWindowManager = RStudioGinjector.INSTANCE.getChunkWindowManager();
+         
+         String windowName = chunkWindowManager.getName(docId, chunkId);
+         
+         if (satelliteManager.satelliteWindowExists(windowName))
+         {
+            WindowEx satelliteWindow = satelliteManager.getSatelliteWindowObject(windowName);     
+            events_.fireEventToSatellite(event, satelliteWindow);
+         }
+      }
+   }
+
+   private void forwardEventToSatelliteAllChunks(
+      String docId,
+      CrossWindowEvent<?> event
+   )
+   {
+      for (String chunkId : satelliteChunks_)
+      {
+         SatelliteManager satelliteManager = RStudioGinjector.INSTANCE.getSatelliteManager();
+         ChunkWindowManager chunkWindowManager = RStudioGinjector.INSTANCE.getChunkWindowManager();
+         
+         String windowName = chunkWindowManager.getName(docId, chunkId);
+         
+         if (satelliteManager.satelliteWindowExists(windowName))
+         {
+            WindowEx satelliteWindow = satelliteManager.getSatelliteWindowObject(windowName);     
+            events_.fireEventToSatellite(event, satelliteWindow);
+         }
+      }
+   }
+
    @Override
    public void onRmdChunkOutputFinished(RmdChunkOutputFinishedEvent event)
    {
@@ -714,10 +696,15 @@ public class TextEditingTargetNotebook
          return;
       boolean ensureVisible = true;
       
+      RmdChunkOutputFinishedEvent.Data data = event.getData();
+      
+      // ignore requests performed to initialize satellite chunks
+      if (satelliteChunkRequestIds_.contains(event.getData().getRequestId()))
+         return;
+      
       // clean up execution state
       cleanChunkExecState(event.getData().getChunkId());
-      RmdChunkOutputFinishedEvent.Data data = event.getData();
-
+      
       ensureVisible = queue_.getChunkExecMode(data.getChunkId()) == 
             NotebookQueueUnit.EXEC_MODE_SINGLE;
 
@@ -758,17 +745,20 @@ public class TextEditingTargetNotebook
       }
    }
 
-
    @Override
    public void onChunkPlotRefreshFinished(ChunkPlotRefreshFinishedEvent event)
    {
+      // ignore replays that are not targeting this instance
+      if (currentPlotsReplayId_ != event.getData().getReplayId())
+         return;
+
+      currentPlotsReplayId_ = null;
+
       // ignore if targeted at another document
       if (event.getData().getDocId() != docUpdateSentinel_.getId())
          return;
 
       lastPlotWidth_ = event.getData().getWidth();
-      docUpdateSentinel_.setProperty(CHUNK_RENDERED_WIDTH, 
-            "" + lastPlotWidth_);
 
       // clean up flag
       resizingPlotsRemote_ = false;
@@ -783,6 +773,10 @@ public class TextEditingTargetNotebook
    @Override
    public void onChunkPlotRefreshed(ChunkPlotRefreshedEvent event)
    {
+      // ignore replays that are not targeting this instance
+      if (currentPlotsReplayId_ != event.getData().getReplayId())
+         return;
+
       // ignore if targeted at another document
       if (event.getData().getDocId() != docUpdateSentinel_.getId())
          return;
@@ -805,12 +799,18 @@ public class TextEditingTargetNotebook
          case ChunkChangeEvent.CHANGE_CREATE:
             createChunkOutput(ChunkDefinition.create(event.getRow(), 
                   1, true, ChunkOutputWidget.EXPANDED, RmdChunkOptions.create(),
-                  event.getChunkId(), 
+                  event.getDocId(), event.getChunkId(), 
                   getKnitrChunkLabel(event.getRow(), docDisplay_, 
                         new ScopeList(docDisplay_))));
             break;
          case ChunkChangeEvent.CHANGE_REMOVE:
             removeChunk(event.getChunkId());
+
+            forwardEventToSatelliteChunk(
+               event.getDocId(),
+               event.getChunkId(),
+               event
+            );
             break;
       }
    }
@@ -852,6 +852,44 @@ public class TextEditingTargetNotebook
       // (this actually spins up a separate R process to re-render all the
       // plots at the new resolution)
       resizePlotsRemote_.schedule(500);
+
+      for (ChunkOutputUi output: outputs_.values())
+      {
+         // throwing exceptions during resize breaks most of the UI and this
+         // invokes Javascript from a package downstream, so tolerate 
+         // (and log) exceptions
+         try
+         {
+            output.getOutputWidget().onResize();
+         }
+         catch(Exception e)
+         {
+            Debug.logException(e);
+         }
+      }
+   }
+
+   @Override
+   public void onChunkSatelliteWindowOpened(ChunkSatelliteWindowOpenedEvent event)
+   {
+      String docId = event.getDocId();
+      String chunkId = event.getChunkId();
+
+      if (docId != docUpdateSentinel_.getId())
+         return;
+
+      satelliteChunks_.add(chunkId);
+
+      forwardEventToSatelliteAllChunks(
+         docId,
+         new ChunkSatelliteCacheEditorStyleEvent(
+            editorStyle_.getColor(),
+            editorStyle_.getBackgroundColor(),
+            DomUtils.extractCssValue("ace_editor", "color")
+         )
+      );
+
+      refreshSatelliteChunk(chunkId);
    }
 
    @Override
@@ -876,15 +914,10 @@ public class TextEditingTargetNotebook
                                        TextEditingTargetNotebook.this);
          
          // read and/or set initial render width
-         String renderedWidth = docUpdateSentinel_.getProperty(
-               CHUNK_RENDERED_WIDTH);
-         if (!StringUtil.isNullOrEmpty(renderedWidth))
-            lastPlotWidth_ = StringUtil.parseInt(renderedWidth, 0);
+         lastPlotWidth_ = notebookDoc_.getChunkRenderedWidth();
          if (lastPlotWidth_ == 0)
          {
             lastPlotWidth_ = getPlotWidth();
-            docUpdateSentinel_.setProperty(CHUNK_RENDERED_WIDTH, 
-                  "" + lastPlotWidth_);
          }
       }
       else
@@ -906,6 +939,11 @@ public class TextEditingTargetNotebook
       
       // clear currently executing chunk
       cleanCurrentExecChunk();
+
+      forwardEventToSatelliteAllChunks(
+         docUpdateSentinel_.getId(),
+         event
+      );
    }
 
    @Override
@@ -931,6 +969,11 @@ public class TextEditingTargetNotebook
             return;
          }
       }
+
+      forwardEventToSatelliteAllChunks(
+         docUpdateSentinel_.getId(),
+         event
+      );
    }
 
    @Override
@@ -1130,7 +1173,7 @@ public class TextEditingTargetNotebook
       });
    }
    
-   public void setChunkExecuting(String chunkId, int mode)
+   public void setChunkExecuting(String chunkId, int mode, int execScope)
    {
       // let the chunk widget know it's started executing
       if (outputs_.containsKey(chunkId))
@@ -1145,7 +1188,16 @@ public class TextEditingTargetNotebook
                                                 scope.getEnd()));
          }
 
-         output.getOutputWidget().setCodeExecuting(mode);
+         forwardEventToSatelliteChunk(
+            docUpdateSentinel_.getId(),
+            chunkId,
+            new ChunkSatelliteCodeExecutingEvent(
+                  mode,
+                  NotebookQueueUnit.EXEC_SCOPE_PARTIAL
+               )
+         );
+
+         output.getOutputWidget().setCodeExecuting(mode, execScope);
          
          // scroll the widget into view if it's a single-shot exec
          if (mode == NotebookQueueUnit.EXEC_MODE_SINGLE)
@@ -1264,6 +1316,7 @@ public class TextEditingTargetNotebook
             docUpdateSentinel_.getId(), 
             contextId_,
             Integer.toHexString(requestId_), 
+            "",
             new ServerRequestCallback<NotebookDocQueue>()
             {
                @Override
@@ -1304,6 +1357,10 @@ public class TextEditingTargetNotebook
    // invoked elsewhere
    private void removeChunk(final String chunkId)
    {
+      // ignore if this chunk is currently executing
+      if (queue_.isChunkExecuting(chunkId))
+         return;
+      
       final ChunkOutputUi output = outputs_.get(chunkId);
       if (output == null)
       {
@@ -1464,6 +1521,11 @@ public class TextEditingTargetNotebook
       Scope setupScope = getSetupChunkScope();
       if (setupScope != null)
       {
+         // make sure there's some code to execute
+         Range range = scopeHelper_.getSweaveChunkInnerRange(setupScope);
+         if (range.getStart().isEqualTo(range.getEnd()))
+            return false;
+
          String crc32 = getChunkCrc32(setupScope);
 
          // compare with previously known hash; if it differs, re-run the
@@ -1585,16 +1647,19 @@ public class TextEditingTargetNotebook
          server_.replayNotebookPlots(docUpdateSentinel_.getId(), 
                chunkId,
                plotWidth,
-               new ServerRequestCallback<Boolean>()
+               0,
+               new ServerRequestCallback<String>()
                {
                   @Override
-                  public void onResponseReceived(Boolean started)
+                  public void onResponseReceived(String replayId)
                   {
-                     // server returns false in the case wherein there's already
+                     // server returns empty in the case wherein there's already
                      // a resize RPC in process (could be from e.g. another 
                      // notebook in this session)
-                     if (!started)
+                     if (replayId == null || replayId.isEmpty())
                         return;
+
+                     currentPlotsReplayId_ = replayId;
                      
                      // don't replay a request for this width again
                      lastPlotWidth_ = plotWidth;
@@ -1608,6 +1673,8 @@ public class TextEditingTargetNotebook
                   @Override
                   public void onError(ServerError error)
                   {
+                     currentPlotsReplayId_ = null;
+
                      Debug.logError(error);
                   }
                });
@@ -1693,9 +1760,39 @@ public class TextEditingTargetNotebook
                new VoidServerRequestCallback());
       }
    }
+
+   private void refreshSatelliteChunk(String chunkId)
+   {
+      requestId_ = nextRequestId_++;
+      satelliteChunkRequestIds_.add(Integer.toHexString(requestId_));
+
+      server_.refreshChunkOutput(
+         docUpdateSentinel_.getPath(),
+         docUpdateSentinel_.getId(), 
+         contextId_,
+         Integer.toHexString(requestId_), 
+         chunkId,
+         new ServerRequestCallback<NotebookDocQueue>()
+         {
+            @Override
+            public void onResponseReceived(NotebookDocQueue queue)
+            {
+               if (queue != null)
+                  queue_.setQueue(queue);
+            }
+
+            @Override
+            public void onError(ServerError error)
+            {
+               Debug.logError(error);
+            }
+         });
+   }
    
    private JsArray<ChunkDefinition> initialChunkDefs_;
    private HashMap<String, ChunkOutputUi> outputs_;
+   private ArrayList<String> satelliteChunks_;
+   private ArrayList<String> satelliteChunkRequestIds_;
    private HandlerRegistration progressClickReg_;
    private HandlerRegistration scopeTreeReg_;
    private HandlerRegistration progressCancelReg_;
@@ -1709,13 +1806,15 @@ public class TextEditingTargetNotebook
    private final TextEditingTarget.Display editingDisplay_;
    private final TextEditingTargetChunks chunks_;
    private final DirtyState dirtyState_;
+   private final NotebookDoc notebookDoc_;
+   private final TextEditingTargetScopeHelper scopeHelper_;
    
    ArrayList<HandlerRegistration> releaseOnDismiss_;
    private Session session_;
    private Provider<SourceWindowManager> pSourceWindowManager_;
-   private DependencyManager dependencyManager_;
    private UIPrefs prefs_;
    private Commands commands_;
+   private NotebookHtmlRenderer htmlRenderer_;
 
    private RMarkdownServerOperations server_;
    private SourceServerOperations source_;
@@ -1733,9 +1832,10 @@ public class TextEditingTargetNotebook
    private int lastPlotWidth_ = 0;
    private boolean resizingPlotsRemote_ = false;
    private boolean maximizedPane_ = false;
-   private boolean isCreateNotebookSaveHandlerRunning_ = false;
    
    private int state_ = STATE_NONE;
+
+   private String currentPlotsReplayId_ = null;
    
    // no chunk state
    private final static int STATE_NONE = 0;
@@ -1753,7 +1853,6 @@ public class TextEditingTargetNotebook
    public final static String CHUNK_OUTPUT_TYPE    = "chunk_output_type";
    public final static String CHUNK_OUTPUT_INLINE  = "inline";
    public final static String CHUNK_OUTPUT_CONSOLE = "console";
-   public final static String CHUNK_RENDERED_WIDTH = "chunk_rendered_width";
    
    public final static int MODE_COMMITTED   = 0;
    public final static int MODE_UNCOMMITTED = 1;

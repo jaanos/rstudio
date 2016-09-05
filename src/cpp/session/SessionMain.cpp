@@ -155,6 +155,7 @@ extern "C" const char *locale2charset(const char *);
 #include "modules/SessionSnippets.hpp"
 #include "modules/SessionUserCommands.hpp"
 #include "modules/SessionRAddins.hpp"
+#include "modules/mathjax/SessionMathJax.hpp"
 
 #include "modules/SessionGit.hpp"
 #include "modules/SessionSVN.hpp"
@@ -347,6 +348,15 @@ FilePath getInitialWorkingDirectory()
    // check for working dir in project none
    else if (options().sessionScope().isProjectNone())
    {
+      // if this is the initial session then use the default working directory
+      // (reset initial to false so this is one shot thing)
+      using namespace module_context;
+      if (activeSession().initial())
+      {
+         activeSession().setInitial(false);
+         return getDefaultWorkingDirectory();
+      }
+
       FilePath workingDirPath = module_context::resolveAliasedPath(
                       module_context::activeSession().workingDir());
       if (workingDirPath.exists())
@@ -516,6 +526,9 @@ void handleClientInit(const boost::function<void()>& initFunction,
    std::string defaultWorkingDir = module_context::createAliasedPath(
                                                 getDefaultWorkingDirectory());
    sessionInfo["default_working_dir"] = defaultWorkingDir;
+
+   // default project dir
+   sessionInfo["default_project_dir"] = options.defaultProjectDir();
 
    // active project file
    if (projects::projectContext().hasProject())
@@ -1847,6 +1860,7 @@ Error rInit(const rstudio::r::session::RInitInfo& rInitInfo)
       (modules::snippets::initialize)
       (modules::user_commands::initialize)
       (modules::r_addins::initialize)
+      (modules::mathjax::initialize)
 
       // workers
       (workers::web_request::initialize)

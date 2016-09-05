@@ -14,10 +14,12 @@
  */
 
 #include "NotebookDocQueue.hpp"
+#include "NotebookChunkDefs.hpp"
 
 #include <boost/foreach.hpp>
 
 #include <session/SessionModuleContext.hpp>
+#include <session/SessionSourceDatabase.hpp>
 
 using namespace rstudio::core;
 
@@ -46,6 +48,32 @@ NotebookDocQueue::NotebookDocQueue(const std::string& docId,
       charWidth_(charWidth),
       maxUnits_(maxUnits)
 {
+   source_database::getPath(docId_, &docPath_);
+
+   // read the default knit options for this document (this is expected to fail
+   // if these options don't exist)
+   json::Object vals;
+   Error error = getChunkValues(docPath_, docId_, &vals);
+   if (error)
+      return;
+
+   json::readObject(vals, kChunkDefaultOptions, &defaultOptions_);
+   
+   // read the default working dir; if it specifies a valid directory, use it
+   // as the working directory for executing chunks in this document
+   std::string workingDir;
+   json::readObject(vals, kChunkWorkingDir, &workingDir);
+   if (!workingDir.empty())
+   {
+      // convert to canonical form by expanding path and removing any empty
+      // stem (i.e. ~/foo/bar/ => /Users/smith/foo/bar)
+      core::FilePath dir = module_context::resolveAliasedPath(workingDir);
+      if (dir.stem().empty() || dir.stem() == ".")
+         dir = dir.parent();
+
+      if (dir.exists())
+         workingDir_ = dir;
+   }
 }
 
 boost::shared_ptr<NotebookQueueUnit> NotebookDocQueue::firstUnit()
@@ -100,6 +128,7 @@ core::Error NotebookDocQueue::fromJson(const core::json::Object& source,
          static_cast<CommitMode>(commitMode), pixelWidth, charWidth,
          maxUnits);
 
+   // populate the queue units
    BOOST_FOREACH(const json::Value val, units)
    {
       // ignore non-objects
@@ -181,6 +210,36 @@ bool NotebookDocQueue::complete() const
 CommitMode NotebookDocQueue::commitMode() const
 {
    return commitMode_;
+}
+
+json::Object NotebookDocQueue::defaultChunkOptions() const
+{
+   return defaultOptions_;
+}
+
+int NotebookDocQueue::remainingUnits() const 
+{
+   return queue_.size();
+}
+
+int NotebookDocQueue::maxUnits() const
+{
+   return maxUnits_;
+}
+
+core::FilePath NotebookDocQueue::workingDir() const 
+{
+   return workingDir_;
+}
+
+void NotebookDocQueue::setDefaultChunkOptions(const json::Object& options)
+{
+   defaultOptions_ = options;
+}
+
+void NotebookDocQueue::setWorkingDir(const FilePath& workingDir)
+{
+   workingDir_ = workingDir;
 }
 
 } // namespace notebook

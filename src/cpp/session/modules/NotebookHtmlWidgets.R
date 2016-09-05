@@ -13,9 +13,9 @@
 #
 #
 
-.rs.addFunction("recordHtmlWidget", function(htmlfile, depfile)
+.rs.addFunction("recordHtmlWidget", function(x, htmlfile, depfile)
 {
-   .Call("rs_recordHtmlWidget", htmlfile, depfile)
+   .Call("rs_recordHtmlWidget", htmlfile, depfile, list(classes = class(x)))
 })
 
 .rs.addFunction("rnb.setHtmlCaptureContext", function(...)
@@ -53,12 +53,52 @@
    }
    
    # record the generated artefacts
-   .rs.recordHtmlWidget(htmlfile, depfile)
+   .rs.recordHtmlWidget(x, htmlfile, depfile)
 })
 
 .rs.addFunction("rnbHooks.print.html",           .rs.rnb.saveHtmlToCache)
 .rs.addFunction("rnbHooks.print.shiny.tag",      .rs.rnb.saveHtmlToCache)
 .rs.addFunction("rnbHooks.print.shiny.tag.list", .rs.rnb.saveHtmlToCache)
+
+.rs.addFunction("rnbHooks.print.knit_asis", function(x, ...) 
+{
+   ctx <- .rs.rnb.getHtmlCaptureContext()
+
+   # create temporary file paths
+   mdfile   <- tempfile("_rs_md_", fileext = ".md")
+   htmlfile <- tempfile("_rs_html_", tmpdir = ctx$outputFolder, 
+                        fileext = ".html")
+
+   # save contents to temporary file
+   cat(as.character(x), file = mdfile, sep = "\n")
+   
+   # render to HTML with pandoc
+   rmarkdown::pandoc_convert(input = rmarkdown::pandoc_path_arg(mdfile), 
+                             to = "html",
+                             output = rmarkdown::pandoc_path_arg(htmlfile))
+
+   # record in cache
+   .rs.recordHtmlWidget(x, htmlfile, NULL)
+})
+
+.rs.addFunction("rnbHooks.print.knit_image_paths", function(x, ...) 
+{
+   .Call("rs_recordExternalPlot", vapply(x, function(path) {
+      dest <- tempfile(fileext = paste(".", tools::file_ext(path), sep = ""))
+      if (identical(substr(path, 1, 7), "http://") ||
+          identical(substr(path, 1, 8), "https://")) {
+         # if the path appears to be a URL, download it locally 
+         tryCatch({
+            suppressMessages(download.file(path, dest, quiet = TRUE))
+         },
+         error = function(e) {})
+      } else {
+         # not a URL, presume it to be an ordinary path on disk
+         file.copy(path, dest, copy.mode = FALSE)
+      }
+      dest
+   }, ""))
+})
 
 .rs.addFunction("rnbHooks.print.htmlwidget", function(x, ...) {
    ctx <- .rs.rnb.getHtmlCaptureContext()
@@ -170,7 +210,7 @@
    htmltools::save_html(htmlProduct, file = htmlfile, libdir = libraryFolder)
    
    # record the saved artefacts
-   .rs.recordHtmlWidget(htmlfile, depfile)
+   .rs.recordHtmlWidget(x, htmlfile, depfile)
 })
 
 
@@ -179,10 +219,12 @@
 .rs.addFunction("rnb.htmlCaptureHooks", function()
 {
    list(
-      "print.htmlwidget"     = .rs.rnbHooks.print.htmlwidget,
-      "print.html"           = .rs.rnbHooks.print.html,
-      "print.shiny.tag"      = .rs.rnbHooks.print.shiny.tag,
-      "print.shiny.tag.list" = .rs.rnbHooks.print.shiny.tag.list
+      "print.htmlwidget"       = .rs.rnbHooks.print.htmlwidget,
+      "print.html"             = .rs.rnbHooks.print.html,
+      "print.shiny.tag"        = .rs.rnbHooks.print.shiny.tag,
+      "print.shiny.tag.list"   = .rs.rnbHooks.print.shiny.tag.list,
+      "print.knit_asis"        = .rs.rnbHooks.print.knit_asis,
+      "print.knit_image_paths" = .rs.rnbHooks.print.knit_image_paths
    )
 })
 

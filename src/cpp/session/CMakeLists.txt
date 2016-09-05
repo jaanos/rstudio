@@ -22,14 +22,17 @@ add_subdirectory(workers)
 if(NOT EXISTS "${RSTUDIO_DEPENDENCIES_DIR}/common/dictionaries")
   message(FATAL_ERROR "Dictionaries not found (re-run install-dependencies script to install)")
 endif()
-if(NOT EXISTS "${RSTUDIO_DEPENDENCIES_DIR}/common/mathjax-23")
-  message(FATAL_ERROR "Mathjax 2.3 not found (re-run install-dependencies script to install)")
+if(NOT EXISTS "${RSTUDIO_DEPENDENCIES_DIR}/common/mathjax-26")
+  message(FATAL_ERROR "Mathjax 2.6 not found (re-run install-dependencies script to install)")
 endif()
 if(NOT EXISTS "${RSTUDIO_DEPENDENCIES_DIR}/common/pandoc")
   message(FATAL_ERROR "pandoc not found (re-run install-dependencies script to install)")
 endif()
 if(NOT EXISTS "${RSTUDIO_DEPENDENCIES_DIR}/common/rmarkdown")
   message(FATAL_ERROR "rmarkdown package not found (re-run install-dependencies script to install)")
+endif()
+if(NOT EXISTS "${RSTUDIO_DEPENDENCIES_DIR}/common/rsconnect")
+  message(FATAL_ERROR "rsconnect package not found (re-run install-dependencies script to install)")
 endif()
 
 # verify libclang is installed
@@ -141,6 +144,7 @@ set (SESSION_SOURCE_FILES
    modules/environment/EnvironmentMonitor.cpp
    modules/environment/EnvironmentUtils.cpp
    modules/environment/SessionEnvironment.cpp
+   modules/mathjax/SessionMathJax.cpp
    modules/overlay/SessionOverlay.cpp
    modules/presentation/SessionPresentation.cpp
    modules/presentation/PresentationLog.cpp
@@ -160,6 +164,9 @@ set (SESSION_SOURCE_FILES
    modules/rmarkdown/NotebookCache.cpp
    modules/rmarkdown/NotebookCapture.cpp
    modules/rmarkdown/NotebookChunkDefs.cpp
+   modules/rmarkdown/NotebookChunkOptions.cpp
+   modules/rmarkdown/NotebookConditions.cpp
+   modules/rmarkdown/NotebookData.cpp
    modules/rmarkdown/NotebookDocQueue.cpp
    modules/rmarkdown/NotebookErrors.cpp
    modules/rmarkdown/NotebookExec.cpp
@@ -416,7 +423,7 @@ if (NOT RSTUDIO_SESSION_WIN64)
            DESTINATION "${RSTUDIO_INSTALL_SUPPORTING}/resources")
 
    # install mathjax for local html preview
-   install(DIRECTORY "${RSTUDIO_DEPENDENCIES_DIR}/common/mathjax-23"
+   install(DIRECTORY "${RSTUDIO_DEPENDENCIES_DIR}/common/mathjax-26"
            DESTINATION "${RSTUDIO_INSTALL_SUPPORTING}/resources")
 
    # install pandoc
@@ -425,7 +432,7 @@ if (NOT RSTUDIO_SESSION_WIN64)
       # static Pandoc binaries (see dependencies/common/install-pandoc)
       set(PANDOC_EXTENSION_DIR "/static")
    endif()
-   set(PANDOC_BIN "${RSTUDIO_DEPENDENCIES_DIR}/common/pandoc/1.17.0.2${PANDOC_EXTENSION_DIR}")
+   set(PANDOC_BIN "${RSTUDIO_DEPENDENCIES_DIR}/common/pandoc/1.17.2${PANDOC_EXTENSION_DIR}")
    file(GLOB PANDOC_FILES "${PANDOC_BIN}/pandoc*")
    install(FILES ${PANDOC_FILES}
            PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
@@ -434,6 +441,11 @@ if (NOT RSTUDIO_SESSION_WIN64)
    # install rmarkdown package
    file(GLOB RMARKDOWN_PACKAGE "${RSTUDIO_DEPENDENCIES_DIR}/common/rmarkdown*.tar.gz")
    install(FILES ${RMARKDOWN_PACKAGE}
+           DESTINATION ${RSTUDIO_INSTALL_SUPPORTING}/R/packages)
+
+   # install rsconnect package
+   file(GLOB RSCONNECT_PACKAGE "${RSTUDIO_DEPENDENCIES_DIR}/common/rsconnect*.tar.gz")
+   install(FILES ${RSCONNECT_PACKAGE}
            DESTINATION ${RSTUDIO_INSTALL_SUPPORTING}/R/packages)
 
    # install PDF.js
@@ -450,6 +462,10 @@ if (NOT RSTUDIO_SESSION_WIN64)
 
    # notebook resources
    install(DIRECTORY "resources/notebook"
+           DESTINATION ${RSTUDIO_INSTALL_SUPPORTING}/resources)
+
+   # install pagedtable
+   install(DIRECTORY "resources/pagedtable"
            DESTINATION ${RSTUDIO_INSTALL_SUPPORTING}/resources)
 
    # install libclang
@@ -506,14 +522,15 @@ if (NOT RSTUDIO_SESSION_WIN64)
    endif()
 endif()
 
- # install 64-bit gcc runtime for session win64
-if(RSTUDIO_SESSION_WIN64)
-   get_filename_component(GCC_PATH ${CMAKE_C_COMPILER} PATH CACHE)
-   install(PROGRAMS ${GCC_PATH}/libgcc_s_sjlj-1.dll
-                    ${GCC_PATH}/libstdc++-6.dll
-                    ${GCC_PATH}/libwinpthread-1.dll
-           DESTINATION ${RSTUDIO_INSTALL_BIN})
-endif()
+# # install 64-bit gcc runtime for session win64
+# # not needed with static build / link of gcc
+# if(RSTUDIO_SESSION_WIN64)
+#    get_filename_component(GCC_PATH ${CMAKE_C_COMPILER} PATH CACHE)
+#    install(PROGRAMS ${GCC_PATH}/libgcc_s_sjlj-1.dll
+#                     ${GCC_PATH}/libstdc++-6.dll
+#                     ${GCC_PATH}/libwinpthread-1.dll
+#            DESTINATION ${RSTUDIO_INSTALL_BIN})
+# endif()
 
 # add overlay if it exists
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/CMakeOverlay.txt")

@@ -21,6 +21,7 @@
 #include "SessionRmdNotebook.hpp"
 
 #include <core/json/Json.hpp>
+#include <core/FilePath.hpp>
 #include <list>
 
 namespace rstudio {
@@ -38,20 +39,30 @@ namespace notebook {
 class NotebookDocQueue : boost::noncopyable
 {
 public:
-   NotebookDocQueue();
    NotebookDocQueue(const std::string& docId, const std::string& jobDesc,
          CommitMode commitMode, int pixelWith, int charWidth, int maxUnits);
+
    static core::Error fromJson(const core::json::Object& source,
       boost::shared_ptr<NotebookDocQueue>* pQueue);
+   core::json::Object toJson() const;
+
    core::Error update(const boost::shared_ptr<NotebookQueueUnit> unit,
       QueueOperation op, const std::string& before);
-   core::json::Object toJson() const;
+   boost::shared_ptr<NotebookQueueUnit> firstUnit();
+
+   core::json::Object defaultChunkOptions() const;
+   void setDefaultChunkOptions(const core::json::Object& options);
+   void setWorkingDir (const core::FilePath& workingDir);
+
+   // accessors
    std::string docId() const;
    int pixelWidth() const;
    int charWidth() const;
    bool complete() const;
    CommitMode commitMode() const;
-   boost::shared_ptr<NotebookQueueUnit> firstUnit();
+   int maxUnits() const;
+   int remainingUnits() const;
+   core::FilePath workingDir() const;
 
 private:
    std::string docId_;
@@ -60,6 +71,14 @@ private:
    int pixelWidth_;
    int charWidth_;
    int maxUnits_;
+
+   // the document path and its default knit chunk options
+   std::string docPath_;
+   core::json::Object defaultOptions_;
+
+   // the working directory in which to execute chunks (note that this will be
+   // empty unless manually specified)
+   core::FilePath workingDir_;
 
    // the queue of chunks to be executed 
    std::list<boost::shared_ptr<NotebookQueueUnit> > queue_;

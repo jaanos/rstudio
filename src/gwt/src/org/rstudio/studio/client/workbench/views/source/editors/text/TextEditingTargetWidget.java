@@ -280,7 +280,27 @@ public class TextEditingTargetWidget
       toolbar.addLeftSeparator();
       toolbar.addLeftWidget(commands_.synctexSearch().createToolbarButton());
 
-      toolbar.addRightWidget(insertChunkButton_ = commands_.insertChunk().createToolbarButton());
+      ToolbarPopupMenu insertChunksMenu = new ToolbarPopupMenu();
+      insertChunksMenu.addItem(commands_.insertChunkR().createMenuItem(false));
+      insertChunksMenu.addSeparator();
+
+      if (!BrowseCap.isWindowsDesktop()) {
+         insertChunksMenu.addItem(commands_.insertChunkBash().createMenuItem(false));
+      }
+
+      insertChunksMenu.addItem(commands_.insertChunkPython().createMenuItem(false));
+      insertChunksMenu.addItem(commands_.insertChunkRCPP().createMenuItem(false));
+      insertChunksMenu.addItem(commands_.insertChunkSQL().createMenuItem(false));
+      insertChunksMenu.addItem(commands_.insertChunkStan().createMenuItem(false));
+
+      insertChunkButton_ = new ToolbarButton(
+                       "Insert",
+                       commands_.insertChunk().getImageResource(),
+                       insertChunksMenu,
+                       true);
+
+      toolbar.addRightWidget(insertChunkButton_);
+
       toolbar.addRightWidget(runButton_ = commands_.executeCode().createToolbarButton(false));
       toolbar.addRightSeparator();
       toolbar.addRightWidget(runLastButton_ = commands_.executeLastCode().createToolbarButton(false));
@@ -847,6 +867,21 @@ public class TextEditingTargetWidget
       
       }
       
+      final AppCommand clearKnitrCache = commands_.clearKnitrCache();
+      rmdFormatButton_.addSeparator();
+      ScheduledCommand cmd = new ScheduledCommand()
+      {
+         @Override
+         public void execute()
+         {
+            clearKnitrCache.execute();
+         }
+      };
+      MenuItem item = new MenuItem(clearKnitrCache.getMenuHTML(false),
+                                   true,
+                                   cmd); 
+      rmdFormatButton_.addMenuItem(item, clearKnitrCache.getMenuLabel(false));
+      
       
       showRmdViewerMenuItems(true, canEditFormatOptions, fileType.isRmd(), 
             RmdOutput.TYPE_STATIC);
@@ -1093,6 +1128,7 @@ public class TextEditingTargetWidget
          menu.addItem(commands_.notebookExpandAllOutput().createMenuItem(false));
          menu.addItem(commands_.notebookCollapseAllOutput().createMenuItem(false));
          menu.addSeparator();
+         menu.addItem(commands_.notebookClearOutput().createMenuItem(false));
          menu.addItem(commands_.notebookClearAllOutput().createMenuItem(false));
          menu.addSeparator();
       }

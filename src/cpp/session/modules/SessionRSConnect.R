@@ -1,7 +1,7 @@
 #
 # SessionRSConnect.R
 #
-# Copyright (C) 2009-15 by RStudio, Inc.
+# Copyright (C) 2009-16 by RStudio, Inc.
 #
 # Unless you have received this program directly from RStudio pursuant
 # to the terms of a commercial license agreement with RStudio, then
@@ -239,53 +239,6 @@
     error_message = .rs.scalar(err)) 
 })
 
-.rs.addFunction("maxDirectoryList", function(dir, root, cur_size, max_size, 
-                                             exclude_dirs, exclude_ext) {
-  # generate a list of files at this level
-  contents <- list.files(dir, recursive = FALSE, all.files = FALSE,
-                         include.dirs = TRUE, no.. = TRUE, full.names = FALSE)
-  
-  # exclude those with a forbidden extension
-  contents <- contents[regexpr(glob2rx(paste("*", exclude_ext, sep=".")),
-                               contents) < 0]
-  
-  # sum the size of the files in the directory
-  info <- file.info(file.path(dir, contents))
-  size <- sum(info$size)
-  if (is.na(size))
-    size <- 0
-  cur_size <- cur_size + size
-  subdir_contents <- NULL
-
-  # if we haven't exceeded the maximum size, check each subdirectory
-  if (cur_size < max_size) {
-    subdirs <- contents[info$isdir]
-    for (subdir in subdirs) {
-      if (subdir %in% exclude_dirs)
-        next;
-
-      # get the list of files in the subdirectory
-      dirList <- .rs.maxDirectoryList(file.path(dir, subdir), 
-                                      file.path(root, subdir), 
-                                      cur_size, max_size, 
-                                      exclude_dirs, exclude_ext)
-      cur_size <- cur_size + dirList$size
-      subdir_contents <- append(subdir_contents, dirList$contents)
-
-      # abort if we've reached the maximum size
-      if (cur_size > max_size)
-        break;
-    }
-  }
-
-  # return the new size and accumulated contents
-  list(
-    size = size,
-    cur_size = cur_size,
-    contents = append(file.path(root, contents[!info$isdir]), 
-                      subdir_contents))
-})
-
 .rs.addFunction("docDeployList", function(target, asMultipleDoc) {
   file_list <- c()
 
@@ -323,8 +276,8 @@
 
   # compose the result
   list (
-    contents = paste("./", file_list, sep = ""),
-    cur_size = sum(
+    contents = file_list,
+    totalSize = sum(
        file.info(file.path(dirname(target), file_list))$size))
 })
 
@@ -334,22 +287,21 @@
    if (ext %in% c("rmd", "html", "htm", "md"))
      .rs.docDeployList(target, asMultipleDoc)
    else
-     .rs.maxDirectoryList(target, ".", 0, max_size, 
-                          c("rsconnect", "packrat"), "Rproj")
+     rsconnect::listBundleFiles(target)
 })
 
 .rs.addFunction("rsconnectDeployList", function(target, asMultipleDoc) {
-  max_size <- 1048576000   # 1GB
+  max_size <- getOption("rsconnect.max.bundle.size", 1048576000)
   dirlist <- .rs.makeDeploymentList(target, asMultipleDoc, max_size)
   list (
     # if the directory is too large, no need to bother sending a potentially
     # large blob of data to the client
-    dir_list = if (dirlist$cur_size >= max_size)
+    dir_list = if (dirlist$totalSize >= max_size)
                   NULL 
                else
-                  substr(dirlist$contents, 3, nchar(dirlist$contents)),
+                  dirlist$contents,
     max_size = .rs.scalar(max_size), 
-    dir_size = .rs.scalar(dirlist$cur_size))
+    dir_size = .rs.scalar(dirlist$totalSize))
 })
 
 .rs.addFunction("enableRStudioConnectUI", function(enable) {
@@ -382,7 +334,7 @@
 })
 
 
-.rs.addJsonRpcHandler("get_rmd_publish_details", function(target) {
+.rs.addFunction("getRmdPublishDetails", function(target, encoding) {
   # check for multiple R Markdown documents in the directory 
   rmds <- list.files(path = dirname(target), pattern = glob2rx("*.Rmd"),
                      all.files = FALSE, recursive = FALSE, ignore.case = TRUE,
@@ -391,7 +343,7 @@
   # see if this format is self-contained (defaults to true for HTML-based 
   # formats)
   selfContained <- TRUE
-  lines <- readLines(target, warn = FALSE)
+  lines <- readLines(target, encoding = encoding, warn = FALSE)
   outputFormat <- rmarkdown:::output_format_from_yaml_front_matter(lines)
   if (is.list(outputFormat$options) &&
       identical(outputFormat$options$self_contained, FALSE)) {
@@ -447,4 +399,25 @@
     }
   }
   .rs.scalarListFromFrame(servers)
+})
+
+.rs.addJsonRpcHandler("generate_app_name", function(appTitle, appPath, account) {
+  name  <- ""
+  valid <- TRUE
+  error <- ""
+
+  # attempt to generate a name from the title
+  tryCatch({
+    name <- rsconnect::generateAppName(appTitle = appTitle, 
+                                       appPath  = appPath, 
+                                       account  = account)
+  }, error = function(e) {
+    valid <<- FALSE
+    error <<- e$message
+  })
+  
+  # report result
+  list(name  = .rs.scalar(name),
+       valid = .rs.scalar(valid),
+       error = .rs.scalar(error))
 })

@@ -19,6 +19,7 @@
 #include <core/PeriodicCommand.hpp>
 #include <core/Thread.hpp>
 #include <core/system/Process.hpp>
+#include <core/FileSerializer.hpp>
 #include <core/system/Crypto.hpp>
 #include <core/system/PosixSystem.hpp>
 #include <core/system/PosixUser.hpp>
@@ -85,6 +86,8 @@ const char * const kErrorMessage = "errorMessage";
 const char * const kFormAction = "formAction";
 
 const char * const kStaySignedInDisplay = "staySignedInDisplay";
+
+const char * const kLoginPageHtml = "loginPageHtml";
 
 enum ErrorType 
 {
@@ -244,6 +247,9 @@ void signIn(const http::Request& request,
 
    variables[kAppUri] = request.queryParamValue(kAppUri);
 
+   // include custom login page html
+   variables[kLoginPageHtml] = server::options().authLoginPageHtml();
+
    // get the path to the JS file
    Options& options = server::options();
    FilePath wwwPath(options.wwwLocalPath());
@@ -365,6 +371,13 @@ void doSignIn(const http::Request& request,
    }
    else
    {
+      // register failed login with monitor
+      using namespace monitor;
+      client().logEvent(Event(kAuthScope,
+                              kAuthLoginFailedEvent,
+                              "",
+                              username));
+
       pResponse->setMovedTemporarily(
             request,
             applicationSignInURL(request,

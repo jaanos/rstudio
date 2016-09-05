@@ -61,6 +61,12 @@ enum CommitMode
    ModeUncommitted = 1
 };
 
+enum Condition
+{
+   ConditionMessage = 0,
+   ConditionWarning = 1
+};
+
 core::Error initialize();
 
 std::string notebookCtxId();
@@ -77,9 +83,16 @@ struct Events : boost::noncopyable
                 const std::string&)>
                 onChunkConsoleOutput;
 
-   boost::signal<void(const core::FilePath&, const core::FilePath&)> onPlotOutput;
-   boost::signal<void(const core::FilePath&, const core::FilePath&)> onHtmlOutput;
+   boost::signal<void(const core::FilePath&, const core::FilePath&, 
+                      const core::json::Value& metadata, unsigned ordinal)> 
+                         onPlotOutput;
+   boost::signal<void(const core::FilePath&, const core::FilePath&,
+                      const core::json::Value& metadata)> onHtmlOutput;
    boost::signal<void(const core::json::Object&)> onErrorOutput;
+   boost::signal<void(const core::FilePath&, const core::FilePath&,
+                      const core::json::Value& metadata)> onDataOutput;
+   boost::signal<void(Condition condition, const std::string& message)> 
+                         onCondition;
 };
 
 Events& events();

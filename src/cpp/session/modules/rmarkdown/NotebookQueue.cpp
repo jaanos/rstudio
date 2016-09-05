@@ -20,17 +20,23 @@
 
 
 #include "SessionRmdNotebook.hpp"
+#include "SessionRMarkdown.hpp"
 #include "NotebookQueue.hpp"
 #include "NotebookQueueUnit.hpp"
+#include "NotebookChunkDefs.hpp"
 #include "NotebookExec.hpp"
 #include "NotebookDocQueue.hpp"
 #include "NotebookCache.hpp"
 #include "NotebookAlternateEngines.hpp"
+#include "NotebookChunkOptions.hpp"
 
 #include <boost/foreach.hpp>
 
+#include <r/RCntxtUtils.hpp>
 #include <r/RInterface.hpp>
 #include <r/RExec.hpp>
+#include <r/RJson.hpp>
+#include <r/RSexp.hpp>
 
 #include <core/Exec.hpp>
 #include <core/Thread.hpp>
@@ -100,7 +106,7 @@ public:
 
       // defer if R is currently executing code (we'll initiate processing when
       // the console continues)
-      if (r::getGlobalContext()->nextcontext != NULL)
+      if (r::context::globalContext().nextcontext())
          return Success();
 
       // if we have a currently executing unit, execute it; otherwise, pop the
@@ -112,10 +118,7 @@ public:
             // when an error occurs, see what the chunk options say; if they
             // have error = TRUE we can keep going, but in all other
             // circumstances we should stop right away
-            const json::Object& options = execContext_->options();
-            bool error = false;
-            json::readObject(options, "error", &error);
-            if (!error)
+            if (!execContext_->options().getOverlayOption("error", false))
             {
                clear();
                return Success();
@@ -145,7 +148,7 @@ public:
 
             // notify client
             enqueueExecStateChanged(ChunkExecFinished, execContext_ ?
-                  execContext_->options() : json::Object());
+                  execContext_->options().chunkOptions() : json::Object());
 
             // clean up current exec unit 
             if (execContext_)
@@ -243,6 +246,16 @@ private:
          execUnit_.reset();
          process(ExprModeNew);
       }
+
+      if (execContext_)
+      {
+         // get the chunk label to see if this is the setup chunk 
+         std::string label;
+         json::readObject(execContext_->options().chunkOptions(), "label", 
+               &label);
+         if (label == "setup")
+            saveSetupContext();
+      }
    }
 
    // execute the next line or expression in the current execution unit
@@ -259,17 +272,26 @@ private:
          
       ExecRange range;
       std::string code = execUnit_->popExecRange(&range, mode); 
-      sendConsoleInput(execUnit_->chunkId(), code);
+      if (code.empty())
+      {
+         // no code to evaluate--skip this unit
+         skipUnit();
+      }
+      else 
+      {
+         // send code to console 
+         sendConsoleInput(execUnit_->chunkId(), code);
 
-      // let client know the range has been sent to R
-      json::Object exec;
-      exec["doc_id"]     = execUnit_->docId();
-      exec["chunk_id"]   = execUnit_->chunkId();
-      exec["exec_range"] = range.toJson();
-      exec["expr_mode"]  = mode;
-      exec["code"]       = code;
-      module_context::enqueClientEvent(
-            ClientEvent(client_events::kNotebookRangeExecuted, exec));
+         // let client know the range has been sent to R
+         json::Object exec;
+         exec["doc_id"]     = execUnit_->docId();
+         exec["chunk_id"]   = execUnit_->chunkId();
+         exec["exec_range"] = range.toJson();
+         exec["expr_mode"]  = mode;
+         exec["code"]       = code;
+         module_context::enqueClientEvent(
+               ClientEvent(client_events::kNotebookRangeExecuted, exec));
+      }
 
       return Success();
    }
@@ -295,6 +317,8 @@ private:
 
    Error executeNextUnit(ExpressionMode mode)
    {
+      Error error;
+
       // no work to do if we have no documents
       if (queue_.empty())
          return Success();
@@ -304,42 +328,64 @@ private:
       if (docQueue->complete())
          return Success();
 
+      // if this is the first unit in the queue, evaluate document-wide 
+      // knit parameters if appropriate
+      if (docQueue->maxUnits() == docQueue->remainingUnits())
+      {
+         error = evaluateRmdParams(docQueue->docId());
+         if (error)
+            LOG_ERROR(error);
+      }
+
       boost::shared_ptr<NotebookQueueUnit> unit = docQueue->firstUnit();
 
-      // establish execution context for the unit
-      json::Object options;
-      Error error = unit->parseOptions(&options);
+      // extract the default chunk options, then augment with the unit's 
+      // chunk-specific options
+      json::Object chunkOptions;
+      error = unit->parseOptions(&chunkOptions);
       if (error)
          LOG_ERROR(error);
+      ChunkOptions options(docQueue->defaultChunkOptions(), chunkOptions);
+
+      // establish execution context for the unit
 
       // in batch mode, make sure unit should be evaluated -- note that
       // eval=FALSE units generally do not get sent up in the first place, so
       // if we're here it's because the unit has eval=<expr>
-      if (unit->execMode() == ExecModeBatch)
+      if (unit->execMode() == ExecModeBatch &&
+         !options.getOverlayOption("eval", true))
       {
-         bool eval = true;
-         json::readObject(options, "eval", &eval);
-         if (!eval)
-         {
-            return skipUnit();
-         }
+         return skipUnit();
+      }
+
+      // skip unit if it has no code to execute
+      if (!unit->hasPendingRanges())
+      {
+         return skipUnit();
       }
 
       // compute context
       std::string ctx = docQueue->commitMode() == ModeCommitted ?
          kSavedCtx : notebookCtxId();
 
+      // if this is the setup chunk, prepare for its execution by switching
+      // knitr chunk defaults
+      std::string label;
+      json::readObject(chunkOptions, "label", &label);
+      if (label == "setup")
+         prepareSetupContext();
+
       // compute engine
-      std::string engine = "r";
-      json::readObject(options, "engine", &engine);
+      std::string engine = options.getOverlayOption("engine", std::string("r"));
       if (engine == "r")
       {
          execContext_ = boost::make_shared<ChunkExecContext>(
-            unit->docId(), unit->chunkId(), ctx, unit->execScope(), options,
-            docQueue->pixelWidth(), docQueue->charWidth());
+            unit->docId(), unit->chunkId(), ctx, unit->execScope(), 
+            docQueue->workingDir(), options, docQueue->pixelWidth(), 
+            docQueue->charWidth());
          execContext_->connect();
          execUnit_ = unit;
-         enqueueExecStateChanged(ChunkExecStarted, options);
+         enqueueExecStateChanged(ChunkExecStarted, options.chunkOptions());
       }
       else
       {
@@ -353,9 +399,10 @@ private:
          else
          {
             execUnit_ = unit;
-            enqueueExecStateChanged(ChunkExecStarted, options);
+            enqueueExecStateChanged(ChunkExecStarted, options.chunkOptions());
             error = executeAlternateEngineChunk(
-               unit->docId(), unit->chunkId(), ctx, engine, innerCode, options);
+               unit->docId(), unit->chunkId(), ctx, engine, innerCode, 
+               options.mergedOptions());
             if (error)
                LOG_ERROR(error);
          }
@@ -427,6 +474,8 @@ private:
       execUnit_ = unit;
       enqueueExecStateChanged(ChunkExecCancelled, json::Object());
 
+      execUnit_.reset();
+
       return executeNextUnit(ExprModeNew);
    }
 
@@ -452,6 +501,84 @@ private:
       // send an interrupt to the console to abort the unterminated 
       // expression
       sendConsoleInput(execUnit_->chunkId(), json::Value());
+   }
+
+   // invoked prior to executing the setup chunk; we use this to set notebook-
+   // specific defaults for knitr chunk options (since they are persisted after
+   // the setup chunk completes)
+   void prepareSetupContext()
+   {
+      Error error = r::exec::RFunction(".rs.setDefaultChunkOptions").call();
+      if (error)
+         LOG_ERROR(error);
+   }
+
+   // invoked when the current execContext_ represents a completed setup chunk
+   // execution; persists knitr options specified in the chunk into storage
+   void saveSetupContext()
+   {
+      std::string docPath;
+      source_database::getPath(execContext_->docId(), &docPath);
+
+      r::sexp::Protect protect;
+      SEXP resultSEXP = R_NilValue;
+      Error error = r::exec::RFunction(".rs.defaultChunkOptions")
+                                      .call(&resultSEXP, &protect);
+      if (error)
+         LOG_ERROR(error);
+      else
+      {
+         json::Value defaults;
+         r::json::jsonValueFromList(resultSEXP, &defaults);
+         if (defaults.type() == json::ObjectType)
+         {
+            // write default chunk options to cache
+            Error error = setChunkValue(docPath, execContext_->docId(), 
+                  kChunkDefaultOptions, defaults.get_obj());
+            if (error)
+               LOG_ERROR(error);
+
+            // update running queue if present
+            if (!queue_.empty())
+               queue_.front()->setDefaultChunkOptions(defaults.get_obj());
+         }
+      }
+
+      // record the root directory
+      error = r::exec::evaluateString(
+            "knitr::opts_knit$get(\"root.dir\")", &resultSEXP, &protect);
+      if (error)
+         LOG_ERROR(error);
+      if (TYPEOF(resultSEXP) != NILSXP)
+      {
+         std::string workingDir = r::sexp::safeAsString(resultSEXP, "");
+         FilePath dir;
+         if (!workingDir.empty())
+            dir = module_context::resolveAliasedPath(workingDir);
+         if (dir.exists())
+         {
+            // write working dir to the cache
+            Error error = setChunkValue(docPath, execContext_->docId(), 
+                  kChunkWorkingDir, workingDir);
+            if (error)
+               LOG_ERROR(error);
+
+            // update running queue if present
+            if (!queue_.empty())
+               queue_.front()->setWorkingDir(dir);
+         }
+      }
+      else if (!error)
+      {
+         // we succeeded in checking root.dir but it was set to NULL; clear
+         // the root directory stored in the cache
+         error = setChunkValue(docPath, execContext_->docId(), 
+               kChunkWorkingDir, json::Value());
+         if (error)
+            LOG_ERROR(error);
+         if (!queue_.empty())
+            queue_.front()->setWorkingDir(FilePath());
+      }
    }
 
    // the documents with active queues
@@ -498,6 +625,7 @@ Error executeNotebookChunks(const json::JsonRpcRequest& request,
    json::Object docObj;
    Error error = json::readParams(request.params, &docObj);
 
+   // deserialize queue from json
    boost::shared_ptr<NotebookDocQueue> pQueue;
    error = NotebookDocQueue::fromJson(docObj, &pQueue);
    if (error)
@@ -507,9 +635,10 @@ Error executeNotebookChunks(const json::JsonRpcRequest& request,
    if (!s_queue)
       s_queue = boost::make_shared<NotebookQueue>();
 
-   // add the queue and process immediately
+   // add the queue and process after the RPC returns 
    s_queue->add(pQueue);
-   s_queue->process(ExprModeNew);
+   pResponse->setAfterResponse(
+         boost::bind(&NotebookQueue::process, s_queue, ExprModeNew));
 
    return Success();
 }

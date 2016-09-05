@@ -46,6 +46,7 @@ import org.rstudio.studio.client.common.filetypes.FileTypeRegistry;
 import org.rstudio.studio.client.common.filetypes.NewFileMenu;
 import org.rstudio.studio.client.common.impl.DesktopFileDialogs;
 import org.rstudio.studio.client.common.latex.LatexProgramRegistry;
+import org.rstudio.studio.client.common.mathjax.MathJax;
 import org.rstudio.studio.client.common.r.roxygen.RoxygenHelper;
 import org.rstudio.studio.client.common.rnw.RnwWeaveRegistry;
 import org.rstudio.studio.client.common.rnw.RnwWeaveSelectWidget;
@@ -99,17 +100,23 @@ import org.rstudio.studio.client.workbench.views.source.SourceWindowManager;
 import org.rstudio.studio.client.workbench.views.source.editors.EditingTargetCodeExecution;
 import org.rstudio.studio.client.workbench.views.source.editors.text.AceEditor;
 import org.rstudio.studio.client.workbench.views.source.editors.text.AceEditorWidget;
+import org.rstudio.studio.client.workbench.views.source.editors.text.ChunkSatellite;
+import org.rstudio.studio.client.workbench.views.source.editors.text.ChunkWindowManager;
 import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTargetChunks;
 import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTargetCompilePdfHelper;
 import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTargetCppHelper;
 import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTargetPresentationHelper;
 import org.rstudio.studio.client.workbench.views.source.editors.text.TextEditingTargetRMarkdownHelper;
+import org.rstudio.studio.client.workbench.views.source.editors.text.ace.AceEditorBackgroundLinkHighlighter;
+import org.rstudio.studio.client.workbench.views.source.editors.text.ace.AceEditorIdleCommands;
+import org.rstudio.studio.client.workbench.views.source.editors.text.ace.AceEditorIdleMonitor;
 import org.rstudio.studio.client.workbench.views.source.editors.text.cpp.CppCompletionManager;
 import org.rstudio.studio.client.workbench.views.source.editors.text.cpp.CppCompletionRequest;
 import org.rstudio.studio.client.workbench.views.source.model.CppCompletion;
 import org.rstudio.studio.client.workbench.views.source.editors.text.r.SignatureToolTipManager;
-import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.SetupChunkOptionsPopupPanel;
 import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.TextEditingTargetNotebook;
+import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.display.ChunkOptionsPopupPanel;
+import org.rstudio.studio.client.workbench.views.source.editors.text.rmd.display.SetupChunkOptionsPopupPanel;
 import org.rstudio.studio.client.workbench.views.vcs.svn.SVNCommandHandler;
 import org.rstudio.studio.client.workbench.views.environment.ClearAllDialog;
 import org.rstudio.studio.client.workbench.views.environment.dataimport.DataImport;
@@ -188,6 +195,12 @@ public interface RStudioGinjector extends Ginjector
    void injectMembers(ConnectionExplorer connectionExplorer);
    void injectMembers(TableBrowser tableBrowser);
    void injectMembers(TableBrowserModel tableBrowserModel);
+   void injectMembers(MathJax mathjax);
+   void injectMembers(ChunkOptionsPopupPanel panel);
+   void injectMembers(ChunkSatellite satellite);
+   void injectMembers(AceEditorBackgroundLinkHighlighter highlighter);
+   void injectMembers(AceEditorIdleMonitor monitor);
+   void injectMembers(AceEditorIdleCommands commands);
    
    public static final RStudioGinjector INSTANCE = GWT.create(RStudioGinjector.class);
 
@@ -219,4 +232,5 @@ public interface RStudioGinjector extends Ginjector
    SourceWindowManager getSourceWindowManager();
    SourceWindow getSourceWindow();
    Server getServer();
+   ChunkWindowManager getChunkWindowManager();
 }

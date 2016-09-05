@@ -120,11 +120,15 @@ if (identical(as.character(Sys.info()["sysname"]), "Darwin") &&
       if (!is.null(repos) && !packratMode && .rs.loadedPackageUpdates(pkgs)) {
 
          # attempt to determine the install command
-         if (length(sys.calls()) > 7) {
-            installCall <- sys.call(-7)
-            installCmd <- format(installCall)
-         } else {
-            installCmd <- NULL
+         installCmd <- NULL
+         for (i in seq_along(sys.calls()))
+         {
+           if (identical(deparse(sys.call(i)[[1]]), "install.packages"))
+           {
+             installCmd <- gsub("\\s+"," ", 
+                                paste(deparse(sys.call(i)), collapse = " "))
+             break
+           }
          }
 
          # call back into rsession to send an event to the client
@@ -998,7 +1002,7 @@ if (identical(as.character(Sys.info()["sysname"]), "Darwin") &&
    if (identical(sysName, "Windows")) {
       if (isR32)
          "wininet"
-      else if (setInternet2(NA))
+      else if (isTRUE(.rs.setInternet2(NA)))
          "internal"
       else
          ""
@@ -1051,7 +1055,7 @@ if (identical(as.character(Sys.info()["sysname"]), "Darwin") &&
    
    # if internal then see if were using windows internal with inet2
    else if (identical(method, "internal")) {
-      identical(Sys.info()[['sysname']], "Windows") && setInternet2(NA)
+      identical(Sys.info()[['sysname']], "Windows") && isTRUE(.rs.setInternet2(NA))
    }
    
    # method with unknown properties (e.g. "lynx") or unresolved auto
@@ -1125,9 +1129,23 @@ if (identical(as.character(Sys.info()["sysname"]), "Darwin") &&
    
 
 .rs.addFunction("downloadFileExtraWithCurlArgs", function() {
-   curlArgs <- "-L -f"
-   existingArgs <- getOption("download.file.extra")
-   if (!is.null(existingArgs) && !grepl(curlArgs, existingArgs, fixed = TRUE))
-      curlArgs <- paste(existingArgs, curlArgs)
-   curlArgs
+   newArgs <- "-L -f"
+   curArgs <- getOption("download.file.extra")
+   if (!is.null(curArgs) && !grepl(newArgs, curArgs, fixed = TRUE))
+      curArgs <- paste(newArgs, curArgs)
+   curArgs
+})
+
+.rs.addFunction("setInternet2", function(value = NA) {
+   
+   # from R 3.3.x, 'setInternet2' is defunct and does nothing
+   if (getRversion() >= "3.3.0")
+      return(TRUE)
+   
+   # should only be called on Windows, but sanity check
+   if (Sys.info()[["sysname"]] != "Windows")
+      return(TRUE)
+   
+   # delegate to 'setInternet2'
+   utils::setInternet2(value)
 })

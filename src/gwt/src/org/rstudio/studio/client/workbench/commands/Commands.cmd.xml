@@ -101,6 +101,26 @@ well as menu structures (for main menu and popup menus).
          <separator/>
          <cmd refid="shareProject"/>
          <separator/>
+         <menu label="_Import Dataset">
+            <cmd refid="importDatasetFromFile"/>
+            <cmd refid="importDatasetFromURL"/>
+            <cmd refid="importDatasetFromCSV"/>
+            <separator/>
+            <cmd refid="importDatasetFromXLS"/>
+            <separator/>
+            <cmd refid="importDatasetFromSAV"/>
+            <cmd refid="importDatasetFromSAS"/>
+            <cmd refid="importDatasetFromStata"/>
+            <separator/>
+            <cmd refid="importDatasetFromXML"/>
+            <cmd refid="importDatasetFromJSON"/>
+            <separator/>
+            <cmd refid="importDatasetFromJDBC"/>
+            <cmd refid="importDatasetFromODBC"/>
+            <separator/>
+            <cmd refid="importDatasetFromMongo"/>
+         </menu>
+         <separator/>
          <cmd refid="saveSourceDoc"/>
          <cmd refid="saveSourceDocAs"/>
          <cmd refid="saveSourceDocWithEncoding"/>
@@ -148,6 +168,7 @@ well as menu structures (for main menu and popup menus).
          <cmd refid="notebookExpandAllOutput"/>
          <cmd refid="notebookCollapseAllOutput"/>
          <separator/>
+         <cmd refid="notebookClearOutput"/>
          <cmd refid="notebookClearAllOutput"/>
          <separator/>
          <cmd refid="goToLine"/>
@@ -384,26 +405,6 @@ well as menu structures (for main menu and popup menus).
       <separator/>
 
       <menu label="_Tools">
-         <menu label="_Import Dataset">
-            <cmd refid="importDatasetFromFile"/>
-            <cmd refid="importDatasetFromURL"/>
-            <cmd refid="importDatasetFromCSV"/>
-            <separator/>
-            <cmd refid="importDatasetFromXLS"/>
-            <separator/>
-            <cmd refid="importDatasetFromSAV"/>
-            <cmd refid="importDatasetFromSAS"/>
-            <cmd refid="importDatasetFromStata"/>
-            <separator/>
-            <cmd refid="importDatasetFromXML"/>
-            <cmd refid="importDatasetFromJSON"/>
-            <separator/>
-            <cmd refid="importDatasetFromJDBC"/>
-            <cmd refid="importDatasetFromODBC"/>
-            <separator/>
-            <cmd refid="importDatasetFromMongo"/>
-         </menu>
-         <separator/>
          <cmd refid="installPackage"/>
          <cmd refid="updatePackages"/>
          <separator/>
@@ -475,6 +476,7 @@ well as menu structures (for main menu and popup menus).
             <cmd refid="openPackageDevelopmentCheatSheet"/>
          </menu>
          <separator/>
+         <cmd refid="helpKeyboardShortcuts"/>
          <cmd refid="markdownHelp"/>
          <cmd refid="openRoxygenQuickReference"/>
          <separator/>
@@ -520,6 +522,7 @@ well as menu structures (for main menu and popup menus).
       <!-- Separate shortcuts with '|', e.g. 'Ctrl+X Ctrl+F|Cmd+O' -->
       <shortcutgroup name="Source Editor">
          <shortcut refid="insertChunk" value="Cmd+Alt+I"/>
+         <shortcut refid="insertChunkR" value="Cmd+Alt+I"/>
          <shortcut refid="insertSection" value="Cmd+Shift+R"/>
          <shortcut refid="extractFunction" value="Cmd+Alt+X"/>
          <shortcut refid="extractLocalVariable" value="Cmd+Alt+V"/>
@@ -547,8 +550,8 @@ well as menu structures (for main menu and popup menus).
          <shortcut refid="yankAfterCursor" value="Ctrl+K" title="Yank Line After Cursor" />
          <shortcut refid="pasteLastYank" value="Ctrl+Y" title="Insert Yanked Text" />
          <shortcut value="Ctrl+T" title="Transpose Letters" if="org.rstudio.core.client.BrowseCap.isMacintosh()"/>
-         <shortcut value="Alt+-" title="Insert Assignment Operator"/>
-         <shortcut value="Cmd+Shift+M" title="Insert Pipe Operator" />
+         <shortcut refid="insertAssignmentOperator" value="Alt+-" title="Insert Assignment Operator"/>
+         <shortcut refid="insertPipeOperator" value="Cmd+Shift+M" title="Insert Pipe Operator" />
          <shortcut refid="renameInScope" value="Cmd+Alt+Shift+M" />
          <shortcut refid="insertRoxygenSkeleton" value="Cmd+Shift+Alt+R" title="Insert Roxygen Skeleton" />
          <shortcut refid="insertSnippet" value="Shift+Tab" title="Insert Snippet"/>
@@ -560,7 +563,7 @@ well as menu structures (for main menu and popup menus).
          <shortcut refid="findFromSelection" value="Meta+E" if="org.rstudio.core.client.BrowseCap.isMacintosh()"/>
          <shortcut refid="findFromSelection" value="Ctrl+F3" if="!org.rstudio.core.client.BrowseCap.isMacintosh()"/>
          <shortcut refid="findReplace" value="Meta+F"/>
-         <shortcut refid="findReplace" value="Ctrl+F" if="!org.rstudio.core.client.BrowseCap.isMacintosh()" disableModes="emacs"/>
+         <shortcut refid="findReplace" value="Ctrl+F" if="!org.rstudio.core.client.BrowseCap.isMacintosh()" disableModes="vim,emacs"/>
          <shortcut refid="findNext" value="Meta+G" if="!org.rstudio.core.client.BrowseCap.isWindows()"/>
          <shortcut refid="findNext" value="Ctrl+G" if="!org.rstudio.core.client.BrowseCap.isWindows()" disableModes="emacs"/>
          <shortcut refid="findNext" value="F3" if="org.rstudio.core.client.BrowseCap.isWindows()"/>
@@ -1427,6 +1430,66 @@ well as menu structures (for main menu and popup menus).
         menuLabel="_Insert Chunk"
         desc="Insert a new code chunk"
         context="editor"/>
+
+   <cmd id="insertChunkR"
+        menuLabel="R"
+        desc="Insert a new R chunk"
+        context="editor"/>
+
+   <cmd id="insertChunkBash"
+        menuLabel="Bash"
+        desc="Insert a new Bash chunk"
+        context="editor"/>
+
+   <cmd id="insertChunkPython"
+        menuLabel="Python"
+        desc="Insert a new Python chunk"
+        context="editor"/>
+
+   <cmd id="insertChunkRCPP"
+        menuLabel="Rcpp"
+        desc="Insert a new Rcpp chunk"
+        context="editor"/>
+        
+   <cmd id="insertChunkStan"
+        menuLabel="Stan"
+        desc="Insert a new Stan chunk"
+        context="editor"/>
+        
+   <cmd id="insertChunkSQL"
+        menuLabel="SQL"
+        desc="Insert a new SQL chunk"
+        context="editor"/>
+
+   <cmd id="switchToChunkR"
+        menuLabel="R"
+        desc="Switch chunk to R"
+        context="editor"/>
+
+   <cmd id="switchToChunkBash"
+        menuLabel="Bash"
+        desc="Switch chunk to Bash"
+        context="editor"/>
+
+   <cmd id="switchToChunkPython"
+        menuLabel="Python"
+        desc="Switch chunk to Python"
+        context="editor"/>
+
+   <cmd id="switchToChunkRCPP"
+        menuLabel="Rcpp"
+        desc="Switch chunk to Rcpp"
+        context="editor"/>
+        
+   <cmd id="switchToChunkStan"
+        menuLabel="Stan"
+        desc="Switch chunk to Stan"
+        context="editor"/>
+        
+   <cmd id="switchToChunkSQL"
+        menuLabel="SQL"
+        desc="Switch chunk to SQL"
+        context="editor"/>
         
    <cmd id="insertSection"
         menuLabel="_Insert Section..."
@@ -1706,6 +1769,10 @@ well as menu structures (for main menu and popup menus).
         menuLabel="Knit _with Parameters..."
         desc="Knit the document with a set of custom parameters"/>
         
+    <cmd id="clearKnitrCache"
+        menuLabel="Clear Knitr Cache..."
+        desc="Clear the knitr cache for the current document"/>
+        
    <cmd id="notebookExpandAllOutput"
         buttonLabel=""
         menuLabel="Expand All Output"
@@ -1715,6 +1782,11 @@ well as menu structures (for main menu and popup menus).
         buttonLabel=""
         menuLabel="Collapse All Output"
         desc="Collapse all code chunk output in the current file"/>
+
+   <cmd id="notebookClearOutput"
+        buttonLabel=""
+        menuLabel="Clear Output"
+        desc="Clear the output of the current notebook chunk" />
 
    <cmd id="notebookClearAllOutput"
         buttonLabel=""
@@ -2625,6 +2697,14 @@ well as menu structures (for main menu and popup menus).
         
    <cmd id="pasteLastYank"
         label="Paste Last Yank"
+        context="editor"/>
+        
+   <cmd id="insertAssignmentOperator"
+        label="Insert Assignment Operator"
+        context="editor"/>
+        
+   <cmd id="insertPipeOperator"
+        label="Insert Pipe Operator"
         context="editor"/>
         
    <cmd id="maximizeConsole"

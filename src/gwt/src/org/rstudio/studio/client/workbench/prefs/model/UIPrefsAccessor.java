@@ -14,7 +14,6 @@
  */
 package org.rstudio.studio.client.workbench.prefs.model;
 
-import org.rstudio.core.client.files.FileSystemItem;
 import org.rstudio.core.client.js.JsObject;
 import org.rstudio.studio.client.application.Desktop;
 import org.rstudio.studio.client.notebook.CompileNotebookPrefs;
@@ -23,6 +22,7 @@ import org.rstudio.studio.client.rmarkdown.RmdOutput;
 import org.rstudio.studio.client.rsconnect.model.RSConnectAccount;
 import org.rstudio.studio.client.shiny.model.ShinyViewerType;
 import org.rstudio.studio.client.workbench.exportplot.model.ExportPlotOptions;
+import org.rstudio.studio.client.workbench.model.SessionInfo;
 import org.rstudio.studio.client.workbench.ui.PaneConfig;
 import org.rstudio.studio.client.workbench.views.connections.model.ConnectionOptions;
 import org.rstudio.studio.client.workbench.views.plots.model.SavePlotAsPdfOptions;
@@ -33,9 +33,12 @@ import com.google.gwt.core.client.JsArrayString;
 
 public class UIPrefsAccessor extends Prefs
 {
-   public UIPrefsAccessor(JsObject uiPrefs, JsObject projectUiPrefs)
+   public UIPrefsAccessor(SessionInfo sessionInfo, 
+                          JsObject uiPrefs, 
+                          JsObject projectUiPrefs)
    {
       super(uiPrefs, projectUiPrefs);
+      sessionInfo_ = sessionInfo;
    }
    
    public PrefValue<Boolean> showLineNumbers()
@@ -339,7 +342,8 @@ public class UIPrefsAccessor extends Prefs
    
    public PrefValue<String> defaultProjectLocation()
    {
-      return string("default_project_location", FileSystemItem.HOME_PATH);
+      return string("default_project_location", 
+                    sessionInfo_.getDefaultProjectDir());
    }
    
    public PrefValue<Boolean> toolbarVisible()
@@ -533,7 +537,7 @@ public class UIPrefsAccessor extends Prefs
 
    public PrefValue<Boolean> enableRStudioConnect()
    {
-      return bool("enable_rstudio_connect", false);
+      return bool("enable_rsconnect_publish_ui", true);
    }
    
    public PrefValue<RSConnectAccount> preferredPublishAccount()
@@ -572,6 +576,11 @@ public class UIPrefsAccessor extends Prefs
       return bool("hide_console_on_chunk_execute", true);
    }
    
+   public PrefValue<Boolean> executeMultiLineStatements()
+   {
+      return bool("execute_multi_line_statements", true);
+   }
+   
    public static final String DOC_OUTLINE_SHOW_SECTIONS_ONLY = "show_sections_only";
    public static final String DOC_OUTLINE_SHOW_SECTIONS_AND_NAMED_CHUNKS = "show_sections_and_chunks";
    public static final String DOC_OUTLINE_SHOW_ALL = "show_all";
@@ -579,6 +588,15 @@ public class UIPrefsAccessor extends Prefs
    public PrefValue<String> shownSectionsInDocumentOutline()
    {
       return string("doc_outline_show", DOC_OUTLINE_SHOW_SECTIONS_ONLY);
+   }
+   
+   public static final String LATEX_PREVIEW_SHOW_NEVER       = "never";
+   public static final String LATEX_PREVIEW_SHOW_INLINE_ONLY = "inline_only";
+   public static final String LATEX_PREVIEW_SHOW_ALWAYS      = "always";
+   
+   public PrefValue<String> showLatexPreviewOnCursorIdle()
+   {
+      return string("latex_preview_on_cursor_idle", LATEX_PREVIEW_SHOW_ALWAYS);
    }
    
    private String getDefaultPdfPreview()
@@ -604,4 +622,6 @@ public class UIPrefsAccessor extends Prefs
          return PDF_PREVIEW_RSTUDIO;
       }
    }
+   
+   private final SessionInfo sessionInfo_;
 }
